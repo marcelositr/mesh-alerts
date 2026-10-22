@@ -9,7 +9,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from mesh_alerts_config import carregar_configuracao
-from mesh_alerts_inmet_scheduler import executar_boletim, periodo_agendado
+from mesh_alerts_inmet_scheduler import executar_boletim, horario_agendado
 
 
 def _transport_tcp(host: str, port: int, channel: int, destination: str):
@@ -68,8 +68,9 @@ def main(argv=None) -> int:
     try:
         while True:
             now = datetime.now(timezone)
-            period = args.period or periodo_agendado(config, now)
-            slot = (now.date().isoformat(), now.strftime("%H:%M") if not args.period else "manual", period)
+            scheduled = None if args.period else horario_agendado(config, now)
+            period = args.period or (scheduled[1] if scheduled else None)
+            slot = (now.date().isoformat(), scheduled[0] if scheduled else "manual", period)
             if period and slot != last_slot:
                 logging.getLogger(__name__).info(
                     "%s boletim INMET para %s municípios",

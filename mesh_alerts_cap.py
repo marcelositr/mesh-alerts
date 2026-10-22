@@ -72,7 +72,7 @@ def polygon_from_cap(value: str) -> Polygon | None:
 def circle_from_cap(value: str, points: int = 72) -> Polygon | None:
     """Approximate a CAP circle with geodesic points, preserving radius in km."""
     try:
-        center, radius_text = (value or "").split(",", 1)
+        center, radius_text = (value or "").rsplit(None, 1)
         lat1, lon1 = (float(part) for part in center.split(","))
         radius_km = float(radius_text.strip())
     except (ValueError, TypeError):

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -158,6 +158,7 @@ def executar_boletim(
                     remaining = float(delay) if municipality_processed else 0.0
                 if remaining > 0:
                     sleep(remaining)
+                    instant += timedelta(seconds=remaining)
 
             municipality_processed = True
             try:
@@ -194,6 +195,7 @@ def executar_boletim(
                 )
                 connection.commit()
                 counts["failed"] += 1
+                last_delivery_time = instant
             else:
                 connection.execute(
                     "UPDATE inmet_bulletins SET status='sent', updated_at=? "
@@ -202,6 +204,7 @@ def executar_boletim(
                 )
                 connection.commit()
                 counts["sent"] += 1
+                last_delivery_time = instant
     finally:
         connection.close()
     return counts

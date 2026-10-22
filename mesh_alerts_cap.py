@@ -6,7 +6,9 @@ import math
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-from shapely.geometry import Polygon
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
+from shapely.ops import unary_union
+from shapely.validation import make_valid
 
 ATOM_NS = "http://www.w3.org/2005/Atom"
 CAP_NS = "urn:oasis:names:tc:emergency:cap:1.2"
@@ -44,8 +46,20 @@ def info_is_current(info: ET.Element, now: datetime) -> tuple[bool, str | None]:
     return True, None
 
 
-def polygon_from_cap(value: str) -> Polygon | None:
-    """Convert a closed CAP polygon 'lat,lon ... lat,lon' to valid WGS84 geometry."""
+def _polygonal_parts(geometry) -> list[Polygon]:
+    """Keep polygon components only, excluding collapsed lines from repairs."""
+    if isinstance(geometry, Polygon):
+        return [geometry] if not geometry.is_empty and geometry.area > 0 else []
+    if isinstance(geometry, (MultiPolygon, GeometryCollection)):
+        parts = []
+        for component in geometry.geoms:
+            parts.extend(_polygonal_parts(component))
+        return parts
+    return []
+
+
+def polygon_from_cap(value: str) -> Polygon | MultiPolygon | None:
+    """Convert a closed CAP polygon to repaired polygonal WGS84 geometry."""
     pairs = (value or "").split()
     if len(pairs) < 4:
         return None
@@ -70,12 +84,18 @@ def polygon_from_cap(value: str) -> Polygon | None:
         return None
 
     try:
-        polygon = Polygon(coords)
-        if not polygon.is_valid:
-            polygon = polygon.buffer(0)
-        if polygon.is_empty or polygon.area == 0:
+        geometry = Polygon(coords)
+        if not geometry.is_valid:
+            geometry = make_valid(geometry)
+        parts = _polygonal_parts(geometry)
+        if not parts:
             return None
-        return polygon
+        repaired = unary_union(parts)
+        if repaired.is_empty or repaired.area == 0:
+            return None
+        if isinstance(repaired, (Polygon, MultiPolygon)):
+            return repaired
+        return None
     except Exception:
         return None
 
@@ -209,7 +229,7 @@ def intersecting_municipalities(
                 if value_name.upper() == "IBGE" and value in municipality_names:
                     cities.add(municipality_names[value])
 
-            geometries: list[Polygon] = []
+            geometries = []
             for node in area.findall("c:polygon", NS):
                 polygon = polygon_from_cap(node.text or "")
                 if polygon is not None:

@@ -15,7 +15,9 @@ from shapely.validation import explain_validity
 from mesh_alerts_cap import (
     NS,
     active_alert_entries,
+    info_is_current,
     intersecting_municipalities,
+    polygon_from_cap,
 )
 
 FEED_URL = "https://idapfile.mdr.gov.br/idap/api/rss/cap"

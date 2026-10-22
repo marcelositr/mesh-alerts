@@ -122,6 +122,10 @@ def executar_boletim(
                 (local_date, periodo, code),
             ).fetchone()
             if exists:
+                # A previous process may have sent this city and crashed before
+                # pacing the next one. Treat the persisted entry as a prior
+                # municipality so the next new send still observes the interval.
+                municipality_processed = True
                 counts["duplicate"] += 1
                 continue
 

@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -216,13 +217,13 @@ def dispatch_pending(store: AlertStateStore, host: str, port: int, channel_index
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Serviço contínuo CAP para Meshtastic via TCP.")
-    parser.add_argument("--tcp-host", help="IP/nome do nó Meshtastic com TCP habilitado")
-    parser.add_argument("--tcp-port", type=int, default=4403)
-    parser.add_argument("--channel-index", type=int, default=0)
-    parser.add_argument("--destination", default="^all")
-    parser.add_argument("--database", default="data/mesh-alerts.sqlite3")
-    parser.add_argument("--output-dir", default="output")
-    parser.add_argument("--interval", type=int, default=60, help="intervalo de consulta em segundos")
+    parser.add_argument("--tcp-host", default=os.environ.get("MESH_ALERTS_TCP_HOST"), help="IP/nome do nó Meshtastic com TCP habilitado")
+    parser.add_argument("--tcp-port", type=int, default=int(os.environ.get("MESH_ALERTS_TCP_PORT", "4403")))
+    parser.add_argument("--channel-index", type=int, default=int(os.environ.get("MESH_ALERTS_CHANNEL_INDEX", "0")))
+    parser.add_argument("--destination", default=os.environ.get("MESH_ALERTS_DESTINATION", "^all"))
+    parser.add_argument("--database", default=os.environ.get("MESH_ALERTS_DATABASE", "data/mesh-alerts.sqlite3"))
+    parser.add_argument("--output-dir", default=os.environ.get("MESH_ALERTS_OUTPUT_DIR", "output"))
+    parser.add_argument("--interval", type=int, default=int(os.environ.get("MESH_ALERTS_INTERVAL", "60")), help="intervalo de consulta em segundos")
     parser.add_argument("--once", action="store_true", help="executa um ciclo e encerra")
     parser.add_argument("--resolve-uncertain", type=int, help="ID de envio incerto a resolver e encerrar")
     parser.add_argument("--resolution", choices=("sent", "retry"), help="resultado confirmado ou decisão de tentar novamente")

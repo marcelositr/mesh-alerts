@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -78,6 +79,19 @@ class CapValidationTests(unittest.TestCase):
             '</c:area></c:info></c:alert>'
         )
         self.assertEqual(avisos_metadados_geograficos(alert), [])
+
+
+    def test_ibge_reference_fixture_contains_exact_six_municipalities(self):
+        fixture = Path(__file__).parent / "fixtures" / "ibge-sp-municipios-api.geojson"
+        geojson = json.loads(fixture.read_text(encoding="utf-8"))
+        boundaries = limites_municipais_do_geojson(geojson)
+        self.assertEqual(set(boundaries), set(MUNICIPIOS))
+        self.assertEqual(
+            sum(1 for feature in geojson["features"]
+                if str((feature.get("properties") or {}).get("codarea")) == "3503000"),
+            1,
+        )
+        self.assertTrue(all(boundary.is_valid for boundary in boundaries.values()))
 
     def test_ibge_geojson_loads_all_six_valid_municipalities(self):
         geometry = {

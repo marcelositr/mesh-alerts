@@ -115,8 +115,14 @@ def carregar_feed(caminho=None):
     return ET.fromstring(data)
 
 
-def carregar_limites():
-    """Busca os seis polígonos em paralelo, com novas tentativas para falhas transitórias."""
+def carregar_limites(caminho=None):
+    """Carrega limites de um GeoJSON local ou consulta as malhas atuais do IBGE."""
+    if caminho:
+        try:
+            geojson = json.loads(Path(caminho).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"não foi possível ler o GeoJSON local {caminho}: {exc}") from exc
+        return limites_municipais_do_geojson(geojson)
 
     def carregar_malha(codigo, nome):
         url = (
@@ -246,6 +252,10 @@ def main(argv=None):
         "--feed",
         help="caminho para um XML CAP local; sem esta opção, consulta o feed oficial",
     )
+    parser.add_argument(
+        "--limites",
+        help="caminho para um GeoJSON municipal local; sem esta opção, consulta o IBGE",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -255,7 +265,7 @@ def main(argv=None):
         raise SystemExit(f"Não foi possível carregar o feed CAP ({fonte}): {exc}") from exc
 
     try:
-        limites = carregar_limites()
+        limites = carregar_limites(args.limites)
     except Exception as exc:
         raise SystemExit(f"Falha ao carregar limites municipais do IBGE: {exc}") from exc
 

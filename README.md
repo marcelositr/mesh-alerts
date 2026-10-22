@@ -103,7 +103,7 @@ Para analisar uma amostra XML já salva, sem buscar o feed CAP:
 python3 testar_alertas_regiao_ituverava.py --feed /caminho/para/defesa-civil-cap.xml
 ```
 
-A consulta à malha do IBGE continua sendo feita pela rede em ambos os modos. O acesso ao feed pode falhar por indisponibilidade da fonte ou da conexão; o script informa o erro e não substitui os dados por uma amostra fictícia.
+Sem `--limites`, a malha municipal é consultada ao vivo na API do IBGE. Com `--limites`, o script usa explicitamente um GeoJSON local fornecido pelo operador. O acesso ao feed pode falhar por indisponibilidade da fonte ou da conexão; o script informa o erro e não substitui os dados por uma amostra fictícia.
 
 Os códigos IBGE configurados são:
 
@@ -128,7 +128,7 @@ python3 -m unittest discover -s tests -v
 
 Os testes cobrem interpretação CAP, validade temporal, geometria, atualizações/cancelamentos, seleção estrita da data e período INMET, formatação compacta, configuração, recuperação do agendador, pacing e prevenção de reenvio automático. O workflow `Python unit tests` executa os testes unitários sem depender das APIs externas.
 
-A validação ao vivo CAP/IBGE fica separada no workflow `Live CAP and IBGE validation`, que pode ser iniciada manualmente e também está agendada a cada seis horas. Uma falha de rede nessa etapa não significa, por si só, que a lógica geográfica esteja com defeito.
+O workflow `Live CAP validation with IBGE reference data` consulta o feed CAP ao vivo e cruza os alertas com a referência GeoJSON do IBGE registrada em `tests/fixtures/ibge-sp-municipios-api.geojson`, evitando que indisponibilidade temporária da API de malhas impeça essa validação. Para testar a consulta atual ao IBGE, execute o script sem `--limites`. A referência tem metadados de origem e data de coleta em `tests/fixtures/ibge-sp-municipios-api.metadata.json`; ela não substitui uma atualização oficial periódica dos limites.
 
 ## Próximas etapas
 

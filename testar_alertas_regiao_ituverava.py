@@ -4,6 +4,9 @@
 import argparse
 import gzip
 import json
+import sys
+import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -33,6 +36,29 @@ MALHAS_URL = (
     "https://servicodados.ibge.gov.br/api/v3/malhas/estados/35"
     "?intrarregiao=municipio&formato=application/vnd.geo+json&qualidade=minima"
 )
+
+
+def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
+    """Baixa uma fonte externa com novas tentativas para falhas transitórias."""
+    ultimo_erro = None
+    for tentativa in range(1, tentativas + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.read()
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            ultimo_erro = exc
+            if tentativa == tentativas:
+                break
+            espera = 2 ** tentativa
+            print(
+                f"Aviso: falha ao consultar {descricao} "
+                f"(tentativa {tentativa}/{tentativas}): {exc}; nova tentativa em {espera}s",
+                file=sys.stderr,
+            )
+            time.sleep(espera)
+    raise RuntimeError(
+        f"não foi possível consultar {descricao} após {tentativas} tentativas: {ultimo_erro}"
+    ) from ultimo_erro
 
 
 def limites_municipais_do_geojson(geojson):
@@ -85,8 +111,7 @@ def carregar_feed(caminho=None):
         request = urllib.request.Request(
             FEED_URL, headers={"User-Agent": "mesh-alerts/0.1"}
         )
-        with urllib.request.urlopen(request, timeout=45) as response:
-            data = response.read()
+        data = baixar_com_retentativas(request, "feed CAP")
     if data[:2] == bytes((0x1f, 0x8b)):
         data = gzip.decompress(data)
     return ET.fromstring(data)
@@ -96,8 +121,7 @@ def carregar_limites():
     request = urllib.request.Request(
         MALHAS_URL, headers={"User-Agent": "mesh-alerts/0.1"}
     )
-    with urllib.request.urlopen(request, timeout=45) as response:
-        data = response.read()
+    data = baixar_com_retentativas(request, "malha municipal do IBGE")
     if data[:2] == bytes((0x1f, 0x8b)):
         data = gzip.decompress(data)
     geojson = json.loads(data.decode("utf-8"))

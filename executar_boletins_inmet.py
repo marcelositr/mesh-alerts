@@ -42,6 +42,7 @@ def main(argv=None) -> int:
     parser.add_argument("--tcp-port", type=int, default=4403)
     parser.add_argument("--channel-index", type=int, default=0)
     parser.add_argument("--destination", default="^all")
+    parser.add_argument("--period", choices=("manha", "tarde", "noite"), help="simula/executa manualmente um período de hoje")
     parser.add_argument("--loop", action="store_true", help="verifica horários continuamente")
     parser.add_argument("--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"), default="INFO")
     args = parser.parse_args(argv)
@@ -50,6 +51,8 @@ def main(argv=None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
+    if args.period and args.loop:
+        parser.error("--period é para execução pontual; remova --loop")
     config = carregar_configuracao(args.config)
     interface = None
     sender = None
@@ -65,8 +68,8 @@ def main(argv=None) -> int:
     try:
         while True:
             now = datetime.now(timezone)
-            period = periodo_agendado(config, now)
-            slot = (now.date().isoformat(), now.strftime("%H:%M"), period)
+            period = args.period or periodo_agendado(config, now)
+            slot = (now.date().isoformat(), now.strftime("%H:%M") if not args.period else "manual", period)
             if period and slot != last_slot:
                 logging.getLogger(__name__).info(
                     "%s boletim INMET para %s municípios",

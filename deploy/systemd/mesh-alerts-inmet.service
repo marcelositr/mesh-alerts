@@ -1,0 +1,24 @@
+[Unit]
+Description=Mesh Alerts INMET bulletin scheduler (simulation mode)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=mesh-alerts
+Group=mesh-alerts
+WorkingDirectory=/opt/mesh-alerts
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/mesh-alerts/.venv/bin/python /opt/mesh-alerts/executar_boletins_inmet.py --loop --database /var/lib/mesh-alerts/inmet-bulletins.sqlite3
+Restart=on-failure
+RestartSec=10s
+StateDirectory=mesh-alerts
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mesh-alerts
+
+[Install]
+WantedBy=multi-user.target

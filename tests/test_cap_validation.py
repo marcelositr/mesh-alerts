@@ -3,6 +3,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 from mesh_alerts_cap import (
+    active_alert_entries,
     circle_from_cap,
     info_is_current,
     parse_cap_datetime,
@@ -54,6 +55,24 @@ class CapValidationTests(unittest.TestCase):
             references_to_identifiers("sender@example,alert-123,2026-10-22T12:00:00Z"),
             {"alert-123"},
         )
+
+    def test_cancel_suppresses_referenced_alert(self):
+        xml = """<feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:c="urn:oasis:names:tc:emergency:cap:1.2">
+          <entry><title>Original</title><content><c:alert>
+            <c:identifier>old-id</c:identifier><c:sent>2026-10-22T17:00:00Z</c:sent>
+            <c:status>Actual</c:status><c:msgType>Alert</c:msgType>
+            <c:info><c:area><c:polygon>-20,-47 -20.1,-47 -20.1,-47.1</c:polygon></c:area></c:info>
+          </c:alert></content></entry>
+          <entry><title>Cancelamento</title><content><c:alert>
+            <c:identifier>cancel-id</c:identifier><c:sent>2026-10-22T17:30:00Z</c:sent>
+            <c:status>Actual</c:status><c:msgType>Cancel</c:msgType>
+            <c:references>sender@example,old-id,2026-10-22T17:00:00Z</c:references>
+          </c:alert></content></entry>
+        </feed>"""
+        root = ET.fromstring(xml)
+        active, _expired = active_alert_entries(root, self.now)
+        self.assertEqual(active, [])
 
 
 if __name__ == "__main__":

@@ -188,7 +188,7 @@ def intersecting_municipalities(
     municipality_names: dict[str, str],
     now: datetime,
 ) -> tuple[set[str], int, int]:
-    """Return municipalities intersected by current CAP polygons/circles."""
+    """Return municipalities matched by current CAP geocodes, polygons, or circles."""
     cities: set[str] = set()
     expired_count = 0
     circle_count = 0
@@ -199,6 +199,16 @@ def intersecting_municipalities(
                 expired_count += 1
             continue
         for area in info.findall("c:area", NS):
+            # CAP area geometry is the union of polygons, circles, and geocodes.
+            # Exact IBGE matches remain useful when the sender supplies no geometry.
+            for geocode in area.findall("c:geocode", NS):
+                value_name = geocode.findtext(
+                    "c:valueName", default="", namespaces=NS
+                ).strip()
+                value = geocode.findtext("c:value", default="", namespaces=NS).strip()
+                if value_name.upper() == "IBGE" and value in municipality_names:
+                    cities.add(municipality_names[value])
+
             geometries: list[Polygon] = []
             for node in area.findall("c:polygon", NS):
                 polygon = polygon_from_cap(node.text or "")

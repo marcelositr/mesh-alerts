@@ -314,5 +314,21 @@ class CapValidationTests(unittest.TestCase):
         self.assertEqual(active, [])
 
 
+    def test_ibge_geocode_matches_municipality_without_polygon_or_circle(self):
+        alert = ET.fromstring(
+            f'<c:alert xmlns:c="{NS["c"]}"><c:info><c:area>'
+            '<c:areaDesc>Ituverava/SP</c:areaDesc>'
+            '<c:geocode><c:valueName>IBGE</c:valueName>'
+            '<c:value>3524105</c:value></c:geocode>'
+            '</c:area></c:info></c:alert>'
+        )
+        boundaries = {"3524105": box(-47.8, -20.5, -47.7, -20.4)}
+        names = {"3524105": "Ituverava"}
+        cities, _expired, _circles = intersecting_municipalities(
+            alert, boundaries, names, self.now
+        )
+        self.assertEqual(cities, {"Ituverava"})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -21,7 +21,7 @@ O programa valida o arquivo na inicialização e apresenta uma mensagem de erro 
 ## Requisitos e instalação
 
 - Python 3.10 ou superior.
-- Dependências listadas em `requirements.txt` (inclui Shapely, PyYAML e o cliente Meshtastic).
+- Dependências declaradas em `pyproject.toml` (Shapely, PyYAML e o cliente Meshtastic). O `requirements.txt` permanece disponível para instalações que prefiram instalar apenas as dependências.
 
 ```bash
 python3 -m pip install -e .

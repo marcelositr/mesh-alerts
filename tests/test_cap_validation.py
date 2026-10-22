@@ -10,6 +10,7 @@ from testar_alertas_regiao_ituverava import (
     MUNICIPIOS,
     carregar_feed,
     limites_municipais_do_geojson,
+    avisos_metadados_geograficos,
 )
 
 from mesh_alerts_cap import (
@@ -40,6 +41,30 @@ class CapValidationTests(unittest.TestCase):
             path.write_text(xml, encoding="utf-8")
             root = carregar_feed(path)
         self.assertEqual(root.tag, "{http://www.w3.org/2005/Atom}feed")
+
+    def test_warns_when_intersecting_alert_geocodes_are_outside_monitored_states(self):
+        alert = ET.fromstring(
+            '<c:alert xmlns:c="urn:oasis:names:tc:emergency:cap:1.2"><c:info><c:area>'
+            '<c:areaDesc>MINAS GERAIS/MG</c:areaDesc>'
+            '<c:geocode><c:valueName>IBGE</c:valueName><c:value>3145000</c:value></c:geocode>'
+            '<c:geocode><c:valueName>IBGE</c:valueName><c:value>3157708</c:value></c:geocode>'
+            '<c:geocode><c:valueName>IBGE</c:valueName><c:value>3170107</c:value></c:geocode>'
+            '</c:area></c:info></c:alert>'
+        )
+        warnings = avisos_metadados_geograficos(alert)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("MINAS GERAIS/MG", warnings[0])
+        self.assertIn("3145000", warnings[0])
+        self.assertIn("35", warnings[0])
+
+    def test_no_metadata_warning_when_ibge_geocode_matches_monitored_state(self):
+        alert = ET.fromstring(
+            '<c:alert xmlns:c="urn:oasis:names:tc:emergency:cap:1.2"><c:info><c:area>'
+            '<c:areaDesc>SÃO PAULO/SP</c:areaDesc>'
+            '<c:geocode><c:valueName>IBGE</c:valueName><c:value>3503000</c:value></c:geocode>'
+            '</c:area></c:info></c:alert>'
+        )
+        self.assertEqual(avisos_metadados_geograficos(alert), [])
 
     def test_ibge_geojson_loads_all_six_valid_municipalities(self):
         geometry = {

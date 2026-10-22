@@ -1,112 +1,90 @@
 # mesh-alerts
 
-Serviço leve para validar alertas da Defesa Civil e do INMET e preparar mensagens regionais para redes Meshtastic via LoRa.
+Serviço leve para identificar alertas CAP da Defesa Civil que cruzam municípios configurados e preparar mensagens para redes Meshtastic via TCP.
 
-## Estado atual
+## Configuração para quem vai instalar
 
-O repositório está na fase de validação de dados. O teste regional do CAP da Defesa Civil cruza áreas de alerta com os limites dos municípios de Aramina, Buritizal, Guará, Igarapava, Ituverava e Miguelópolis.
+A configuração principal fica em **`config.yaml`**. Edite esse arquivo antes de executar o serviço. Não é necessário editar o código Python para trocar de região ou ajustar o nó Meshtastic.
 
-Há um serviço contínuo experimental para preparar mensagens regionais e enviá-las a um nó Meshtastic por TCP. Ele não usa MQTT. A validação geográfica não substitui os avisos oficiais da Defesa Civil; teste em ambiente controlado antes de uso operacional.
+As seções principais são:
 
-## Requisitos
+- `regiao`: nome da região, estado e UF.
+- `municipios`: lista de municípios, cada um com nome e código IBGE de sete dígitos.
+- `meshtastic`: host, porta TCP, índice do canal e destino da mensagem.
+- `servico`: intervalo de consulta, banco SQLite, diretório de TXT, nível de log, timeout/repetições HTTP e limite da mensagem de rádio.
+- `fontes`: URL do feed CAP e URL-base da malha municipal do IBGE.
 
-- Python 3.10 ou superior
-- Dependências Python declaradas em `requirements.txt` (`Shapely` e cliente `meshtastic`)
+O arquivo incluído contém a configuração regional existente para Aramina, Buritizal, Guará, Igarapava, Ituverava e Miguelópolis. Use códigos IBGE como texto, entre aspas. Não inclua segredos ou credenciais nesse arquivo.
 
-Instalação:
+O programa valida o arquivo na inicialização e apresenta uma mensagem de erro para campos ausentes ou inválidos. Se precisar de outra configuração, crie uma cópia e informe-a com `--config /caminho/para/config.yaml`.
+
+## Requisitos e instalação
+
+- Python 3.10 ou superior.
+- Dependências listadas em `requirements.txt` (inclui Shapely, PyYAML e o cliente Meshtastic).
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-## Teste regional CAP
-
-O script `testar_alertas_regiao_ituverava.py` consulta o feed CAP oficial da Defesa Civil, carrega as malhas municipais do IBGE e lista alertas com interseção territorial.
-
-Fonte CAP:
-
-`https://idapfile.mdr.gov.br/idap/api/rss/cap`
-
-Execute usando dados atuais:
+## Validar alertas atuais
 
 ```bash
 python3 testar_alertas_regiao_ituverava.py
 ```
 
-Para analisar uma amostra XML já salva, sem buscar o feed CAP:
+O script lê `config.yaml`, consulta o feed CAP configurado e carrega as malhas dos municípios selecionados no IBGE. Para analisar um XML CAP local:
 
 ```bash
 python3 testar_alertas_regiao_ituverava.py --feed /caminho/para/defesa-civil-cap.xml
 ```
 
-A consulta à malha do IBGE continua sendo feita pela rede em ambos os modos. O acesso ao feed pode falhar por indisponibilidade da fonte ou da conexão; o script informa o erro e não substitui os dados por uma amostra fictícia.
+O feed pode falhar por indisponibilidade externa ou de rede. O programa informa o erro e não substitui dados atuais por amostras fictícias. Os testes unitários usam amostras versionadas e não dependem da internet.
 
-Os códigos IBGE utilizados são:
+## Serviço contínuo e transmissão TCP
 
-| Município | Código |
-|---|---:|
-| Aramina | 3503000 |
-| Buritizal | 3508207 |
-| Guará | 3517703 |
-| Igarapava | 3520103 |
-| Ituverava | 3524105 |
-| Miguelópolis | 3529708 |
+Configure `meshtastic.host` com o endereço do nó Meshtastic que tenha a interface TCP habilitada. Confira também porta, canal e destino. Inicie um único ciclo de teste com:
+
+```bash
+python3 mesh_alerts_service.py --once
+```
+
+Para executar continuamente:
+
+```bash
+python3 mesh_alerts_service.py
+```
+
+Argumentos como `--tcp-host`, `--tcp-port`, `--channel-index`, `--destination`, `--database`, `--output-dir` e `--interval` podem sobrescrever a configuração para uma execução pontual. As variáveis de ambiente `MESH_ALERTS_*` também continuam disponíveis para instalações existentes e para systemd; veja `deploy/mesh-alerts.env.example`.
+
+O banco SQLite deve ficar em armazenamento local persistente. Não o coloque em `/tmp`, não o apague entre reinicializações e proteja o banco e o diretório de saída de acordo com a política local de retenção.
+
+## Execução contínua com systemd (Linux)
+
+A unidade está em `deploy/mesh-alerts.service`. O modelo pressupõe o código em `/opt/mesh-alerts`, ambiente virtual em `/opt/mesh-alerts/.venv` e usuário de serviço `mesh-alerts`. Ajuste os caminhos e permissões antes de instalar. O arquivo `config.yaml` deve estar presente no diretório de trabalho e precisa permitir que o usuário do serviço o leia.
+
+O systemd pode reiniciar o processo após falhas, mas não recupera internet, energia ou o nó de rádio por conta própria.
+
+## Persistência e recuperação
+
+- SQLite usa transações, WAL e sincronização `FULL`; alertas e mensagens enfileiradas sobrevivem à reinicialização.
+- A identidade do alerta usa o par CAP `sender` + `identifier`; o mesmo alerta não cria uma segunda mensagem na fila.
+- Atualizações e cancelamentos desativam os alertas referenciados, mesmo quando a nova área não cruza os municípios monitorados.
+- Falhas de transporte identificadas podem retornar à fila para nova tentativa.
+- Se o processo cair enquanto um envio está em andamento, a mensagem vira `uncertain` e não é reenviada automaticamente. Isso evita duplicações silenciosas, mas pode deixar uma mensagem sem entrega.
+- Para resolver um envio incerto, use o banco correto e o ID registrado: `python3 mesh_alerts_service.py --resolve-uncertain ID --resolution sent` ou `--resolution retry`. A opção `retry` pode duplicar uma mensagem que já chegou à rede.
+- O status `sent` significa que a chamada foi aceita pelo cliente Meshtastic TCP. Não comprova recepção por outro rádio.
 
 ## Testes
 
-Execute os testes unitários sem acessar a rede:
+Execute os testes unitários sem consultar a rede:
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-Os testes unitários cobrem interpretação temporal, polígonos, círculos, referências de atualização/cancelamento e uma amostra CAP real com limites municipais versionados. O workflow `Python unit tests` executa esses testes sem depender da rede. A validação ao vivo fica separada no workflow `Live CAP and IBGE validation`, que pode ser iniciada manualmente e também está agendada para cada seis horas; ela consulta o feed CAP oficial e as malhas atuais do IBGE. Essa etapa depende da disponibilidade das fontes externas, e uma falha de rede não significa, por si só, que a lógica geográfica esteja com defeito.
+O workflow `Python unit tests` executa os testes em Python 3.12. A validação ao vivo CAP/IBGE fica separada no workflow `Live CAP and IBGE validation`, que pode ser iniciada manualmente e também roda a cada seis horas. Essa etapa depende das fontes externas.
 
-A interpretação temporal considera `effective` e `expires` para decidir se um bloco está vigente. Um `onset` futuro não desativa o aviso: ele indica quando o evento é esperado para começar. Datas fornecidas, mas malformadas, fazem o bloco ser rejeitado. Códigos geográficos CAP com `valueName=IBGE` também são cruzados diretamente com os seis municípios monitorados, inclusive quando a área não contém polígonos ou círculos. Quando há interseção geométrica, mas os códigos IBGE apontam exclusivamente para outros estados, o script exibe um aviso. Polígonos inválidos são diagnosticados antes do reparo e a geometria reparada continua sendo avaliada.
+## Limites da implementação
 
-## Serviço contínuo e transmissão TCP
-
-O serviço consulta o feed CAP, cruza alertas com os seis municípios monitorados, grava mensagens TXT e mantém uma fila de saída persistente em SQLite. Quando há mensagens pendentes, conecta-se ao nó Meshtastic com TCP habilitado.
-
-Exemplo de execução:
-
-```bash
-python3 mesh_alerts_service.py \
-  --tcp-host meshtastic-node.local \
-  --tcp-port 4403 \
-  --channel-index 0 \
-  --database data/mesh-alerts.sqlite3 \
-  --output-dir output \
-  --interval 60
-```
-
-Use o endereço e a porta do seu próprio nó. O nó precisa estar acessível pela rede e com a interface TCP habilitada. Para executar um único ciclo, acrescente `--once`. O diretório do banco deve ficar em armazenamento local persistente; não coloque o banco em `/tmp`, nem apague ou substitua o arquivo entre reinicializações.
-
-### Execução contínua com systemd (Linux)
-
-O repositório inclui um modelo de unidade em `deploy/mesh-alerts.service` e um exemplo de configuração em `deploy/mesh-alerts.env.example`. Revise os caminhos antes de instalar: o modelo pressupõe o código em `/opt/mesh-alerts`, ambiente virtual em `/opt/mesh-alerts/.venv` e usuário de serviço `mesh-alerts`.
-
-Após criar o usuário, instalar as dependências no ambiente virtual e copiar o arquivo de ambiente para `/etc/mesh-alerts/mesh-alerts.env`, instale a unidade em `/etc/systemd/system/mesh-alerts.service`, depois execute:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now mesh-alerts.service
-sudo systemctl status mesh-alerts.service
-journalctl -u mesh-alerts.service -f
-```
-
-O systemd reinicia o processo após falhas. Ele não consegue recuperar a internet, energia ou o nó de rádio por conta própria; o serviço preserva a fila e tenta novamente em ciclos posteriores.
-
-### Persistência e recuperação
-
-- O SQLite usa transações, WAL e sincronização `FULL`; alertas e mensagens enfileiradas sobrevivem à reinicialização.
-- A identidade do alerta usa o par CAP `sender` + `identifier`. O mesmo alerta não cria uma segunda mensagem na fila.
-- Atualizações e cancelamentos desativam os alertas referenciados, mesmo quando a nova área já não cruza os municípios monitorados.
-- Falhas de transporte identificadas voltam à fila para nova tentativa.
-- Se o processo cair enquanto um envio estiver em andamento, a mensagem vira `uncertain` e **não é reenviada automaticamente**, para evitar duplicações silenciosas. Essa decisão pode deixar uma mensagem sem entrega caso a queda tenha ocorrido antes do envio efetivo.
-- Consulte os IDs de envios incertos no banco e resolva cada caso explicitamente. Para marcar como enviado: `python3 mesh_alerts_service.py --database data/mesh-alerts.sqlite3 --resolve-uncertain ID --resolution sent`. Para autorizar nova tentativa: substitua `sent` por `retry`. A opção `retry` pode produzir duplicação se a mensagem já tiver chegado à rede.
-- O status `sent` significa que a chamada de envio foi aceita pelo cliente Meshtastic TCP. Não é confirmação de recepção pelo rádio ou pelo destinatário.
-
-O TXT é uma cópia legível da mensagem preparada para transmissão. Proteja o banco e o diretório de saída de acordo com a política local de retenção. Mantenha a máquina e o nó Meshtastic ligados, e use um supervisor de processo do sistema operacional para reiniciar o serviço depois de falhas.
-
-**Estado de maturidade:** esta implementação precisa passar pela CI e por testes controlados com um nó Meshtastic antes de ser considerada pronta para uso operacional. Ela não substitui os canais oficiais da Defesa Civil.
+O serviço contínuo implementado atualmente consome CAP da Defesa Civil. A menção a INMET e outras fontes descreve uma possível evolução, não uma integração já disponível. A validação geográfica não substitui os avisos oficiais da Defesa Civil. Faça testes controlados com um nó Meshtastic antes de considerar o serviço pronto para uso operacional.

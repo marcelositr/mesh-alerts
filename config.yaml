@@ -28,6 +28,7 @@ inmet:
   previsao_url: "https://apiprevmet3.inmet.gov.br/previsao"
   fuso_horario: "America/Sao_Paulo"
   timeout_segundos: 30
+  janela_recuperacao_minutos: 30
   horarios:
     "06:00": "manha"
     "12:00": "tarde"

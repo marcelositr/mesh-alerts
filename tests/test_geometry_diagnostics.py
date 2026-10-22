@@ -1,7 +1,12 @@
 import unittest
+from unittest.mock import patch
+import urllib.error
 import xml.etree.ElementTree as ET
 
-from testar_alertas_regiao_ituverava import avisos_poligonos_invalidos
+from testar_alertas_regiao_ituverava import (
+    avisos_poligonos_invalidos,
+    baixar_com_retentativas,
+)
 
 CAP_NS = "urn:oasis:names:tc:emergency:cap:1.2"
 
@@ -19,6 +24,38 @@ class GeometryDiagnosticTests(unittest.TestCase):
         self.assertEqual(len(warnings), 1)
         self.assertIn("não interpretável", warnings[0])
         self.assertIn("geometria ignorada", warnings[0])
+
+
+class NetworkRetryTests(unittest.TestCase):
+    def test_retries_transient_url_error_then_succeeds(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b"ok"
+
+        with patch(
+            "testar_alertas_regiao_ituverava.urllib.request.urlopen",
+            side_effect=[urllib.error.URLError("timed out"), Response()],
+        ) as urlopen, patch("testar_alertas_regiao_ituverava.time.sleep"):
+            data = baixar_com_retentativas(object(), "fonte de teste")
+
+        self.assertEqual(data, b"ok")
+        self.assertEqual(urlopen.call_count, 2)
+
+    def test_raises_after_all_retries_fail(self):
+        with patch(
+            "testar_alertas_regiao_ituverava.urllib.request.urlopen",
+            side_effect=urllib.error.URLError("timed out"),
+        ) as urlopen, patch("testar_alertas_regiao_ituverava.time.sleep"):
+            with self.assertRaisesRegex(RuntimeError, "após 3 tentativas"):
+                baixar_com_retentativas(object(), "fonte de teste")
+
+        self.assertEqual(urlopen.call_count, 3)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import gzip
 import json
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -115,9 +116,9 @@ def carregar_feed(caminho=None):
 
 
 def carregar_limites():
-    """Busca somente os seis polígonos necessários, evitando baixar SP inteiro."""
-    features = []
-    for codigo, nome in MUNICIPIOS.items():
+    """Busca os seis polígonos em paralelo, com novas tentativas para falhas transitórias."""
+
+    def carregar_malha(codigo, nome):
         url = (
             f"{MALHAS_BASE_URL}/{codigo}"
             "?formato=application/vnd.geo+json&qualidade=minima"
@@ -126,7 +127,7 @@ def carregar_limites():
             url, headers={"User-Agent": "mesh-alerts/0.1"}
         )
         data = baixar_com_retentativas(
-            request, f"malha municipal de {nome}", tentativas=2, timeout=12
+            request, f"malha municipal de {nome}", tentativas=3, timeout=25
         )
         if data[:2] == bytes((0x1f, 0x8b)):
             data = gzip.decompress(data)
@@ -137,11 +138,25 @@ def carregar_limites():
             municipal_features = geojson.get("features")
             if not isinstance(municipal_features, list):
                 raise RuntimeError(f"GeoJSON sem lista de features para {nome}")
-            features.extend(municipal_features)
-        elif geojson.get("type") == "Feature":
-            features.append(geojson)
-        else:
-            raise RuntimeError(f"Resposta do IBGE não é GeoJSON para {nome}")
+            return municipal_features
+        if geojson.get("type") == "Feature":
+            return [geojson]
+        raise RuntimeError(f"Resposta do IBGE não é GeoJSON para {nome}")
+
+    features = []
+    with ThreadPoolExecutor(max_workers=len(MUNICIPIOS)) as executor:
+        tarefas = {
+            executor.submit(carregar_malha, codigo, nome): nome
+            for codigo, nome in MUNICIPIOS.items()
+        }
+        for tarefa in as_completed(tarefas):
+            nome = tarefas[tarefa]
+            try:
+                features.extend(tarefa.result())
+            except Exception as exc:
+                raise RuntimeError(
+                    f"não foi possível carregar a malha municipal de {nome}: {exc}"
+                ) from exc
 
     return limites_municipais_do_geojson(
         {"type": "FeatureCollection", "features": features}

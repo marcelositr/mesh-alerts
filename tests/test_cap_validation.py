@@ -56,6 +56,19 @@ class CapValidationTests(unittest.TestCase):
             {"alert-123"},
         )
 
+    def test_alert_without_sent_timestamp_is_rejected(self):
+        xml = """<feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:c="urn:oasis:names:tc:emergency:cap:1.2">
+          <entry><title>Sem envio</title><content><c:alert>
+            <c:identifier>missing-sent</c:identifier>
+            <c:status>Actual</c:status><c:msgType>Alert</c:msgType>
+            <c:info><c:area><c:polygon>-20,-47 -20.1,-47 -20.1,-47.1</c:polygon></c:area></c:info>
+          </c:alert></content></entry>
+        </feed>"""
+        root = ET.fromstring(xml)
+        active, _expired = active_alert_entries(root, self.now)
+        self.assertEqual(active, [])
+
     def test_cancel_suppresses_referenced_alert(self):
         xml = """<feed xmlns="http://www.w3.org/2005/Atom"
           xmlns:c="urn:oasis:names:tc:emergency:cap:1.2">

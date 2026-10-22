@@ -286,6 +286,30 @@ class AlertStateStore:
                 ).fetchone()[0] else "recorded"
             return "cancelled" if msg_type == "Cancel" else "recorded"
 
+    def invalidate_stale_pending(self, *, now: datetime | None = None) -> int:
+        """Prevent queued Alert/Update messages from being sent after expiry or supersession."""
+        now_dt = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        with self._transaction() as connection:
+            cursor = connection.execute(
+                """UPDATE outbox
+                   SET status='failed', updated_at=?,
+                       last_error='Alert expired or was superseded before dispatch'
+                   WHERE status='pending'
+                     AND action IN ('alert', 'update')
+                     AND EXISTS (
+                         SELECT 1 FROM cap_alerts
+                         WHERE cap_alerts.sender=outbox.sender
+                           AND cap_alerts.identifier=outbox.identifier
+                           AND (
+                               cap_alerts.active=0
+                               OR (cap_alerts.expires_at IS NOT NULL
+                                   AND cap_alerts.expires_at <= ?)
+                           )
+                     )""",
+                (now_dt.isoformat(), now_dt.isoformat()),
+            )
+            return cursor.rowcount
+
     def claim_next(self) -> dict[str, Any] | None:
         """Atomically claim the oldest pending message for a transport attempt."""
         with self._transaction() as connection:

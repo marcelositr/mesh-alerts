@@ -88,7 +88,9 @@ def circle_from_cap(value: str, points: int = 72) -> Polygon | None:
         radius_km = float(radius_text.strip())
     except (ValueError, TypeError):
         return None
-    if not (math.isfinite(lat1) and math.isfinite(lon1) and math.isfinite(radius_km)):\n        return None\n    if not (-90 <= lat1 <= 90 and -180 <= lon1 <= 180 and radius_km > 0):
+    if not (math.isfinite(lat1) and math.isfinite(lon1) and math.isfinite(radius_km)):
+        return None
+    if not (-90 <= lat1 <= 90 and -180 <= lon1 <= 180 and radius_km > 0):
         return None
     if points < 12:
         points = 12

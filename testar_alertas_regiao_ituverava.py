@@ -9,7 +9,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 
-from shapely.geometry import shape
+from shapely.geometry import Polygon, shape
+from shapely.validation import explain_validity
 
 from mesh_alerts_cap import (
     NS,
@@ -101,6 +102,28 @@ def carregar_limites():
     return limites_municipais_do_geojson(geojson)
 
 
+def avisos_poligonos_invalidos(alert):
+    """Lista polígonos CAP inválidos antes do reparo geométrico."""
+    avisos = []
+    for numero, node in enumerate(alert.findall(".//c:polygon", NS), 1):
+        coords = []
+        try:
+            for pair in (node.text or "").split():
+                partes = pair.split(",")
+                if len(partes) != 2:
+                    raise ValueError("par de coordenadas inválido")
+                lat, lon = (float(parte) for parte in partes)
+                coords.append((lon, lat))
+            original = Polygon(coords)
+        except (ValueError, TypeError):
+            continue
+        if not original.is_valid:
+            avisos.append(
+                f"polígono CAP #{numero} inválido ({explain_validity(original)}); "
+                "o cruzamento territorial usa a geometria reparada"
+            )
+    return avisos
+
 def avisos_metadados_geograficos(alert):
     """Sinaliza metadados IBGE incompatíveis com os estados monitorados, sem filtrar alertas."""
     ufs_monitoradas = {codigo[:2] for codigo in MUNICIPIOS}
@@ -162,7 +185,8 @@ def main(argv=None):
             ident = alert.findtext("c:identifier", default="sem-id", namespaces=NS)
             titulo = entry.findtext("a:title", default="Sem título", namespaces=NS)
             achados[ident] = (titulo, sorted(cidades))
-            avisos = avisos_metadados_geograficos(alert)
+            avisos = avisos_poligonos_invalidos(alert)
+            avisos.extend(avisos_metadados_geograficos(alert))
             if avisos:
                 avisos_por_alerta[ident] = avisos
 

@@ -68,6 +68,7 @@ class CapValidationTests(unittest.TestCase):
         self.assertIn("MINAS GERAIS/MG", warnings[0])
         self.assertIn("3145000", warnings[0])
         self.assertIn("35", warnings[0])
+        self.assertIn("não invalida", warnings[0])
 
     def test_no_metadata_warning_when_ibge_geocode_matches_monitored_state(self):
         alert = ET.fromstring(
@@ -190,6 +191,21 @@ class CapValidationTests(unittest.TestCase):
             alert, boundaries, names, self.now
         )
         self.assertEqual(cities, {"Dentro", "Borda"})
+
+    def test_minas_geocode_does_not_suppress_geometry_crossing_sp_municipality(self):
+        alert = ET.fromstring(
+            '<c:alert xmlns:c="urn:oasis:names:tc:emergency:cap:1.2"><c:info><c:area>'
+            '<c:areaDesc>MINAS GERAIS/MG</c:areaDesc>'
+            '<c:geocode><c:valueName>IBGE</c:valueName><c:value>3145000</c:value></c:geocode>'
+            '<c:polygon>-20.0,-47.0 -20.1,-47.0 -20.1,-47.1 -20.0,-47.0</c:polygon>'
+            '</c:area></c:info></c:alert>'
+        )
+        boundaries = {"3524105": box(-47.08, -20.08, -47.02, -20.02)}
+        names = {"3524105": "Ituverava"}
+        cities, _expired, _circles = intersecting_municipalities(
+            alert, boundaries, names, self.now
+        )
+        self.assertEqual(cities, {"Ituverava"})
 
     def test_circle_intersection_finds_nearby_municipality(self):
         alert = ET.fromstring(

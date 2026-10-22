@@ -8,7 +8,7 @@ from mesh_alerts_cap import (
     info_is_current,
     parse_cap_datetime,
     polygon_from_cap,
-    references_to_identifiers,
+    references_to_keys,
 )
 
 NS = {"c": "urn:oasis:names:tc:emergency:cap:1.2"}
@@ -50,11 +50,12 @@ class CapValidationTests(unittest.TestCase):
         self.assertTrue(circle.is_valid)
         self.assertGreater(circle.area, 0)
 
-    def test_references_extract_identifier(self):
+    def test_references_extract_sender_and_identifier(self):
         self.assertEqual(
-            references_to_identifiers("sender@example,alert-123,2026-10-22T12:00:00Z"),
-            {"alert-123"},
+            references_to_keys("sender@example,alert-123,2026-10-22T12:00:00Z"),
+            {("sender@example", "alert-123")},
         )
+        self.assertEqual(references_to_keys("bad-reference"), set())
 
     def test_alert_without_sent_timestamp_is_rejected(self):
         xml = """<feed xmlns="http://www.w3.org/2005/Atom"
@@ -69,16 +70,58 @@ class CapValidationTests(unittest.TestCase):
         active, _expired = active_alert_entries(root, self.now)
         self.assertEqual(active, [])
 
+    def test_future_cancel_does_not_suppress_current_alert(self):
+        xml = """<feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:c="urn:oasis:names:tc:emergency:cap:1.2">
+          <entry><title>Original</title><content><c:alert>
+            <c:sender>sender@example</c:sender><c:identifier>old-id</c:identifier>
+            <c:sent>2026-10-22T17:00:00Z</c:sent><c:status>Actual</c:status>
+            <c:msgType>Alert</c:msgType>
+            <c:info><c:expires>2026-10-22T19:00:00Z</c:expires></c:info>
+          </c:alert></content></entry>
+          <entry><title>Future cancel</title><content><c:alert>
+            <c:sender>sender@example</c:sender><c:identifier>cancel-id</c:identifier>
+            <c:sent>2026-10-22T19:00:00Z</c:sent><c:status>Actual</c:status>
+            <c:msgType>Cancel</c:msgType>
+            <c:references>sender@example,old-id,2026-10-22T17:00:00Z</c:references>
+          </c:alert></content></entry>
+        </feed>"""
+        root = ET.fromstring(xml)
+        active, _expired = active_alert_entries(root, self.now)
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0][1].findtext("c:identifier", namespaces=NS), "old-id")
+
+    def test_reference_from_another_sender_does_not_suppress_alert(self):
+        xml = """<feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:c="urn:oasis:names:tc:emergency:cap:1.2">
+          <entry><title>Original</title><content><c:alert>
+            <c:sender>sender-a@example</c:sender><c:identifier>same-id</c:identifier>
+            <c:sent>2026-10-22T17:00:00Z</c:sent><c:status>Actual</c:status>
+            <c:msgType>Alert</c:msgType>
+            <c:info><c:expires>2026-10-22T19:00:00Z</c:expires></c:info>
+          </c:alert></content></entry>
+          <entry><title>Unrelated cancel</title><content><c:alert>
+            <c:sender>sender-b@example</c:sender><c:identifier>cancel-id</c:identifier>
+            <c:sent>2026-10-22T17:30:00Z</c:sent><c:status>Actual</c:status>
+            <c:msgType>Cancel</c:msgType>
+            <c:references>sender-b@example,same-id,2026-10-22T17:00:00Z</c:references>
+          </c:alert></content></entry>
+        </feed>"""
+        root = ET.fromstring(xml)
+        active, _expired = active_alert_entries(root, self.now)
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0][1].findtext("c:identifier", namespaces=NS), "same-id")
+
     def test_cancel_suppresses_referenced_alert(self):
         xml = """<feed xmlns="http://www.w3.org/2005/Atom"
           xmlns:c="urn:oasis:names:tc:emergency:cap:1.2">
           <entry><title>Original</title><content><c:alert>
-            <c:identifier>old-id</c:identifier><c:sent>2026-10-22T17:00:00Z</c:sent>
+            <c:sender>sender@example</c:sender><c:identifier>old-id</c:identifier><c:sent>2026-10-22T17:00:00Z</c:sent>
             <c:status>Actual</c:status><c:msgType>Alert</c:msgType>
             <c:info><c:area><c:polygon>-20,-47 -20.1,-47 -20.1,-47.1</c:polygon></c:area></c:info>
           </c:alert></content></entry>
           <entry><title>Cancelamento</title><content><c:alert>
-            <c:identifier>cancel-id</c:identifier><c:sent>2026-10-22T17:30:00Z</c:sent>
+            <c:sender>sender@example</c:sender><c:identifier>cancel-id</c:identifier><c:sent>2026-10-22T17:30:00Z</c:sent>
             <c:status>Actual</c:status><c:msgType>Cancel</c:msgType>
             <c:references>sender@example,old-id,2026-10-22T17:00:00Z</c:references>
           </c:alert></content></entry>

@@ -160,7 +160,8 @@ def avisos_poligonos_invalidos(alert, now=None):
     return avisos
 
 
-def avisos_metadados_geograficos(alert, municipios):
+def avisos_metadados_geograficos(alert, municipios=None):
+    municipios = municipios or municipality_map(load_config())
     ufs_monitoradas = {codigo[:2] for codigo in municipios}
     avisos = []
     for area in alert.findall(".//c:area", NS):

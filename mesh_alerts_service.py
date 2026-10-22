@@ -270,6 +270,9 @@ def main(argv=None) -> int:
             except Exception:
                 LOG.exception("Falha ao consultar/processar o feed CAP; estado persistido preservado")
             try:
+                invalidated = store.invalidate_stale_pending(now=datetime.now(timezone.utc))
+                if invalidated:
+                    LOG.info("%s mensagem(ns) pendente(s) invalidada(s) por expiração/substituição", invalidated)
                 sent_count = dispatch_pending(store, args.tcp_host, args.tcp_port, args.channel_index)
                 if sent_count:
                     LOG.info("%s mensagem(ns) aceita(s) pelo cliente TCP", sent_count)

@@ -2,10 +2,13 @@ import unittest
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
+from shapely.geometry import box
+
 from mesh_alerts_cap import (
     active_alert_entries,
     circle_from_cap,
     info_is_current,
+    intersecting_municipalities,
     parse_cap_datetime,
     polygon_from_cap,
     references_to_keys,
@@ -39,16 +42,61 @@ class CapValidationTests(unittest.TestCase):
         self.assertEqual(info_is_current(info, self.now), (False, "timestamp expires inválido"))
 
     def test_polygon_parses_lat_lon_and_rejects_bad_input(self):
-        polygon = polygon_from_cap("-20.0,-47.0 -20.1,-47.0 -20.1,-47.1")
+        polygon = polygon_from_cap(
+            "-20.0,-47.0 -20.1,-47.0 -20.1,-47.1 -20.0,-47.0"
+        )
         self.assertIsNotNone(polygon)
         self.assertTrue(polygon.is_valid)
         self.assertIsNone(polygon_from_cap("bad input"))
+        self.assertIsNone(
+            polygon_from_cap("-20.0,-47.0 -20.1,-47.0 -20.1,-47.1")
+        )
+        self.assertIsNone(
+            polygon_from_cap(
+                "-20.0,-47.0 -20.1,-47.0 999,-47.1 -20.0,-47.0"
+            )
+        )
 
     def test_circle_radius_is_converted_to_polygon(self):
         circle = circle_from_cap("-20.0,-47.0 10")
         self.assertIsNotNone(circle)
         self.assertTrue(circle.is_valid)
         self.assertGreater(circle.area, 0)
+
+    def test_polygon_intersection_includes_boundary_touch(self):
+        alert = ET.fromstring(
+            f'<c:alert xmlns:c="{NS["c"]}"><c:info>'
+            '<c:area><c:polygon>'
+            '-20.0,-47.0 -20.1,-47.0 -20.1,-47.1 -20.0,-47.0'
+            '</c:polygon></c:area></c:info></c:alert>'
+        )
+        boundaries = {
+            "inside": box(-47.08, -20.08, -47.02, -20.02),
+            "edge": box(-47.0, -20.08, -46.95, -20.02),
+            "outside": box(-46.8, -20.08, -46.7, -20.02),
+        }
+        names = {"inside": "Dentro", "edge": "Borda", "outside": "Fora"}
+        cities, _expired, _circles = intersecting_municipalities(
+            alert, boundaries, names, self.now
+        )
+        self.assertEqual(cities, {"Dentro", "Borda"})
+
+    def test_circle_intersection_finds_nearby_municipality(self):
+        alert = ET.fromstring(
+            f'<c:alert xmlns:c="{NS["c"]}"><c:info>'
+            '<c:area><c:circle>-20.0,-47.0 10</c:circle></c:area>'
+            '</c:info></c:alert>'
+        )
+        boundaries = {
+            "near": box(-47.02, -20.02, -46.98, -19.98),
+            "far": box(-47.5, -20.5, -47.4, -20.4),
+        }
+        names = {"near": "Próximo", "far": "Distante"}
+        cities, _expired, circle_count = intersecting_municipalities(
+            alert, boundaries, names, self.now
+        )
+        self.assertEqual(cities, {"Próximo"})
+        self.assertEqual(circle_count, 1)
 
     def test_references_extract_sender_and_identifier(self):
         self.assertEqual(

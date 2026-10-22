@@ -1,0 +1,24 @@
+[Unit]
+Description=Mesh Alerts CAP to Meshtastic service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=mesh-alerts
+Group=mesh-alerts
+WorkingDirectory=/opt/mesh-alerts
+EnvironmentFile=/etc/mesh-alerts/mesh-alerts.env
+ExecStart=/opt/mesh-alerts/.venv/bin/python /opt/mesh-alerts/mesh_alerts_service.py
+Restart=on-failure
+RestartSec=10
+StateDirectory=mesh-alerts
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mesh-alerts
+
+[Install]
+WantedBy=multi-user.target

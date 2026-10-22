@@ -112,6 +112,19 @@ class AlertStateStoreTests(unittest.TestCase):
         self.assertEqual(retried["id"], claimed["id"])
         self.assertEqual(retried["attempts"], 2)
 
+    def test_transport_exception_after_dispatch_becomes_uncertain(self):
+        self.add_alert()
+        claimed = self.store.claim_next()
+        self.store.mark_uncertain(claimed["id"], "timeout after dispatch")
+        item = self.store.list_outbox(status="uncertain")[0]
+        self.assertEqual(item["id"], claimed["id"])
+        self.assertEqual(item["last_error"], "timeout after dispatch")
+        self.assertIsNone(self.store.claim_next())
+
+    def test_in_memory_database_is_rejected(self):
+        with self.assertRaises(ValueError):
+            AlertStateStore(":memory:")
+
     def test_retryable_transport_failure_returns_to_pending(self):
         self.add_alert()
         claimed = self.store.claim_next()

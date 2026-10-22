@@ -143,7 +143,7 @@ def avisos_metadados_geograficos(alert):
             avisos.append(
                 f"metadados administrativos: areaDesc={area_desc or 'não informado'}; "
                 f"códigos IBGE={', '.join(codigos)} apontam para UFs fora do conjunto "
-                f"monitorado ({', '.join(sorted(ufs_monitoradas)}); isso não invalida "
+                f"monitorado ({', '.join(sorted(ufs_monitoradas))}); isso não invalida "
                 "a interseção geométrica com municípios vizinhos"
             )
 

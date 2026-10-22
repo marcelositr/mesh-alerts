@@ -232,6 +232,17 @@ class AlertStateStore:
                             ref_identifier,
                         ),
                     )
+                    # Do not leave an older notification queued after a referenced
+                    # alert is superseded or cancelled.
+                    connection.execute(
+                        """UPDATE outbox
+                           SET status='failed', updated_at=?,
+                               last_error='Alert superseded or cancelled before dispatch'
+                           WHERE sender=? AND identifier=?
+                             AND action IN ('alert', 'update')
+                             AND status='pending'""",
+                        (now_text, ref_sender, ref_identifier),
+                    )
 
             active = not is_expired and msg_type != "Cancel" and bool(is_current)
             lifecycle_state = (

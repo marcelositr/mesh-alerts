@@ -120,13 +120,14 @@ def process_feed(root: ET.Element, store: AlertStateStore, boundaries, now: date
         sender, identifier = key
         refs = references_to_keys(_text(alert, "c:references"))
         infos = _current_info(alert, now)
+        all_infos = alert.findall("c:info", NS)
         is_current = key in active_keys and bool(infos)
         cities: list[str] = []
         if is_current:
             matched, _, _ = intersecting_municipalities(alert, boundaries, MUNICIPIOS, now)
             cities = sorted(matched)
         matches_region = bool(cities)
-        expires_at = _expiry_for_current_info(infos) if infos else None
+        expires_at = _expiry_for_current_info(all_infos) if all_infos else None
         payload = {
             "title": _text(entry, "a:title") or _text(infos[0], "c:headline") if infos else _text(entry, "a:title"),
             "headline": _text(infos[0], "c:headline") if infos else "",

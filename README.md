@@ -6,7 +6,7 @@ Serviço leve para cruzar alertas oficiais da Defesa Civil (CAP) com municípios
 
 A validação regional CAP consulta o feed oficial da Defesa Civil, interpreta validade, atualizações e cancelamentos e cruza geometrias com os municípios monitorados. A primeira etapa da integração de previsão implementa a consulta e a formatação compacta da API do INMET.
 
-**Ainda não há envio para rádios, MQTT ou canais Meshtastic.** Nenhum teste unitário transmite mensagens. A previsão do INMET é consultada separadamente dos alertas CAP.
+**O agendador INMET está implementado, mas não é iniciado automaticamente pelo sistema operacional.** A execução padrão simula as mensagens e não transmite. O envio real exige a opção explícita `--send` e um destino TCP informado. Os testes automatizados usam transporte simulado e não transmitem mensagens. A previsão do INMET permanece separada dos alertas CAP.
 
 **Escopo meteorológico:** usar somente a previsão do INMET. Os alertas meteorológicos do próprio INMET não fazem parte deste projeto.
 
@@ -31,7 +31,7 @@ Muitas nuvens com possibilidade de chuva isolada | 32/20°C | U85/50% | Vento fr
 
 O texto meteorológico é preservado conforme o campo `resumo` retornado pelo INMET. Temperaturas e umidade aparecem na ordem máxima/mínima. Campos de ícones e tendências são ignorados.
 
-Os intervalos configurados são de 3 segundos entre mensagens de um mesmo boletim e 30 segundos após terminar uma cidade, antes de iniciar a próxima. Como o boletim de previsão agora cabe em uma única mensagem Meshtastic, o intervalo entre mensagens dentro do boletim não se aplica à previsão compacta; a pausa entre cidades será usada quando a camada de transporte for implementada.
+Os intervalos configurados são de 3 segundos entre mensagens de um mesmo boletim e 30 segundos entre municípios. Como cada previsão compacta é uma única mensagem, os 3 segundos não se aplicam ao boletim INMET. No envio real, o agendador aguarda 30 segundos antes de processar o próximo município.
 
 ## Validar a previsão localmente
 
@@ -53,6 +53,33 @@ PY
 ```
 
 O comando consulta a previsão da manhã da data local atual para cada município. Se o INMET não fornecer esse período para hoje, imprime o motivo e não substitui a previsão por dados futuros. O comando não transmite nada pelo rádio ou MQTT.
+
+
+## Agendador INMET
+
+Faça uma simulação pontual, sem transmitir:
+
+```bash
+python3 executar_boletins_inmet.py
+```
+
+Para deixar o processo verificando os horários configurados, ainda em simulação:
+
+```bash
+python3 executar_boletins_inmet.py --loop
+```
+
+O agendador consulta os horários locais 06:00, 12:00 e 18:00 e seleciona, respectivamente, manhã, tarde e noite da data atual. Se o período de hoje não estiver disponível, não substitui por uma previsão futura. O estado de envios reais fica em SQLite, por data, período e município.
+
+**Somente para habilitar transmissão real via TCP**, informe o host do dispositivo Meshtastic e a opção explícita `--send`:
+
+```bash
+python3 executar_boletins_inmet.py --loop --send --tcp-host 192.168.0.2
+```
+
+Ajuste host, porta, canal e destino conforme a sua instalação. A reserva persistente é gravada antes da tentativa de envio para evitar retransmissão automática após uma interrupção. Se o transporte falhar ou o resultado ficar incerto, o boletim daquele município não é reenviado automaticamente; confira o estado e decida manualmente. Isso privilegia evitar duplicatas, mas não garante entrega exatamente uma vez.
+
+Não foi feito teste de transmissão física ou MQTT nesta etapa. O agendador não altera a lógica dos alertas CAP nem consulta alertas meteorológicos do INMET.
 
 ## Teste regional CAP
 

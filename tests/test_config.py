@@ -44,7 +44,7 @@ class ConfigurationTests(unittest.TestCase):
             path.write_text(yaml.safe_dump({
                 "servico": {"intervalo_segundos": 1}
             }), encoding="utf-8")
-            with self.assertRaisesRegex(ConfigError, "pelo menos 10"):
+            with self.assertRaisesRegex(ConfigError, ">= 10"):
                 load_config(path)
 
     def test_unknown_section_is_rejected(self):

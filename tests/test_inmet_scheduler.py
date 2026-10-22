@@ -105,6 +105,35 @@ class InmetSchedulerTests(unittest.TestCase):
         self.assertEqual(result["unavailable"], 1)
         self.assertEqual(result["sent"], 1)
         self.assertEqual(delays, [30])
+    def test_restart_after_first_city_keeps_inter_city_pacing(self):
+        sent = []
+        first_delays = []
+
+        def fail_second_city(municipality, period, now):
+            if municipality["codigo_ibge"] == "3508207":
+                raise RuntimeError("simulated process interruption")
+            return self.builder(municipality, period, now)
+
+        first = executar_boletim(
+            self.config, self.database, "manha", now=self.now,
+            enviar=sent.append, simular=False, construir_mensagem=fail_second_city,
+            sleep=first_delays.append,
+        )
+        self.assertEqual(first["sent"], 1)
+        self.assertEqual(first["failed"], 1)
+        self.assertEqual(first_delays, [30])
+
+        restart_delays = []
+        second = executar_boletim(
+            self.config, self.database, "manha", now=self.now,
+            enviar=sent.append, simular=False, construir_mensagem=self.builder,
+            sleep=restart_delays.append,
+        )
+        self.assertEqual(second["duplicate"], 1)
+        self.assertEqual(second["sent"], 1)
+        self.assertEqual(restart_delays, [30])
+        self.assertEqual(len(sent), 2)
+
     def test_failed_transport_is_not_retried_automatically(self):
         calls = []
         def broken(message):

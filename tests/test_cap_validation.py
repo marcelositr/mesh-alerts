@@ -112,6 +112,31 @@ class CapValidationTests(unittest.TestCase):
         self.assertEqual(len(active), 1)
         self.assertEqual(active[0][1].findtext("c:identifier", namespaces=NS), "same-id")
 
+    def test_update_suppresses_original_and_returns_update(self):
+        xml = """<feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:c="urn:oasis:names:tc:emergency:cap:1.2">
+          <entry><title>Original</title><content><c:alert>
+            <c:sender>sender@example</c:sender><c:identifier>old-id</c:identifier>
+            <c:sent>2026-10-22T17:00:00Z</c:sent><c:status>Actual</c:status>
+            <c:msgType>Alert</c:msgType>
+            <c:info><c:expires>2026-10-22T19:00:00Z</c:expires></c:info>
+          </c:alert></content></entry>
+          <entry><title>Atualização</title><content><c:alert>
+            <c:sender>sender@example</c:sender><c:identifier>update-id</c:identifier>
+            <c:sent>2026-10-22T17:30:00Z</c:sent><c:status>Actual</c:status>
+            <c:msgType>Update</c:msgType>
+            <c:references>sender@example,old-id,2026-10-22T17:00:00Z</c:references>
+            <c:info><c:expires>2026-10-22T20:00:00Z</c:expires></c:info>
+          </c:alert></content></entry>
+        </feed>"""
+        root = ET.fromstring(xml)
+        active, _expired = active_alert_entries(root, self.now)
+        self.assertEqual(len(active), 1)
+        self.assertEqual(
+            active[0][1].findtext("c:identifier", namespaces=NS),
+            "update-id",
+        )
+
     def test_cancel_suppresses_referenced_alert(self):
         xml = """<feed xmlns="http://www.w3.org/2005/Atom"
           xmlns:c="urn:oasis:names:tc:emergency:cap:1.2">

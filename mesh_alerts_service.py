@@ -216,7 +216,7 @@ def dispatch_pending(store: AlertStateStore, host: str, port: int, channel_index
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Serviço contínuo CAP para Meshtastic via TCP.")
-    parser.add_argument("--tcp-host", required=True, help="IP/nome do nó Meshtastic com TCP habilitado")
+    parser.add_argument("--tcp-host", help="IP/nome do nó Meshtastic com TCP habilitado")
     parser.add_argument("--tcp-port", type=int, default=4403)
     parser.add_argument("--channel-index", type=int, default=0)
     parser.add_argument("--destination", default="^all")
@@ -224,16 +224,27 @@ def main(argv=None) -> int:
     parser.add_argument("--output-dir", default="output")
     parser.add_argument("--interval", type=int, default=60, help="intervalo de consulta em segundos")
     parser.add_argument("--once", action="store_true", help="executa um ciclo e encerra")
+    parser.add_argument("--resolve-uncertain", type=int, help="ID de envio incerto a resolver e encerrar")
+    parser.add_argument("--resolution", choices=("sent", "retry"), help="resultado confirmado ou decisão de tentar novamente")
     parser.add_argument("--log-level", default="INFO", choices=("DEBUG", "INFO", "WARNING", "ERROR"))
     args = parser.parse_args(argv)
     if args.interval < 10:
         parser.error("--interval deve ser de pelo menos 10 segundos")
+    if args.resolve_uncertain is None and not args.tcp_host:
+        parser.error("--tcp-host é obrigatório para executar o serviço")
+    if args.resolve_uncertain is not None and not args.resolution:
+        parser.error("--resolution sent|retry é obrigatório com --resolve-uncertain")
 
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     store = AlertStateStore(args.database)
+    if args.resolve_uncertain is not None:
+        store.resolve_uncertain(args.resolve_uncertain, resolution=args.resolution)
+        LOG.info("Envio incerto %s resolvido como %s", args.resolve_uncertain, args.resolution)
+        return 0
+
     recovered = store.recover_interrupted_sends()
     if recovered:
         LOG.warning(

@@ -93,7 +93,8 @@ def executar_boletim(
     connection = _connect(database)
     try:
         municipalities = config["municipios"]
-        for index, municipality in enumerate(municipalities):
+        municipality_processed = False
+        for municipality in municipalities:
             code = str(municipality["codigo_ibge"])
             exists = connection.execute(
                 "SELECT status FROM inmet_bulletins WHERE local_date=? AND period=? AND municipality_code=?",
@@ -103,6 +104,12 @@ def executar_boletim(
                 counts["duplicate"] += 1
                 continue
 
+            if not simular and municipality_processed:
+                delay = int(inmet.get("intervalo_entre_municipios_segundos", 30))
+                if delay > 0:
+                    sleep(delay)
+
+            municipality_processed = True
             try:
                 message = builder(municipality, periodo, instant)
             except PrevisaoIndisponivelError as exc:
@@ -145,10 +152,6 @@ def executar_boletim(
                 )
                 connection.commit()
                 counts["sent"] += 1
-            if index < len(municipalities) - 1:
-                delay = int(inmet.get("intervalo_entre_municipios_segundos", 30))
-                if delay > 0:
-                    sleep(delay)
     finally:
         connection.close()
     return counts

@@ -82,6 +82,21 @@ python3 mesh_alerts_service.py \
 
 Use o endereço e a porta do seu próprio nó. O nó precisa estar acessível pela rede e com a interface TCP habilitada. Para executar um único ciclo, acrescente `--once`. O diretório do banco deve ficar em armazenamento local persistente; não coloque o banco em `/tmp`, nem apague ou substitua o arquivo entre reinicializações.
 
+### Execução contínua com systemd (Linux)
+
+O repositório inclui um modelo de unidade em `deploy/mesh-alerts.service` e um exemplo de configuração em `deploy/mesh-alerts.env.example`. Revise os caminhos antes de instalar: o modelo pressupõe o código em `/opt/mesh-alerts`, ambiente virtual em `/opt/mesh-alerts/.venv` e usuário de serviço `mesh-alerts`.
+
+Após criar o usuário, instalar as dependências no ambiente virtual e copiar o arquivo de ambiente para `/etc/mesh-alerts/mesh-alerts.env`, instale a unidade em `/etc/systemd/system/mesh-alerts.service`, depois execute:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now mesh-alerts.service
+sudo systemctl status mesh-alerts.service
+journalctl -u mesh-alerts.service -f
+```
+
+O systemd reinicia o processo após falhas. Ele não consegue recuperar a internet, energia ou o nó de rádio por conta própria; o serviço preserva a fila e tenta novamente em ciclos posteriores.
+
 ### Persistência e recuperação
 
 - O SQLite usa transações, WAL e sincronização `FULL`; alertas e mensagens enfileiradas sobrevivem à reinicialização.

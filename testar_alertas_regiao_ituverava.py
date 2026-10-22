@@ -32,10 +32,7 @@ MUNICIPIOS = {
     "3524105": "Ituverava",
     "3529708": "Miguelópolis",
 }
-MALHAS_URL = (
-    "https://servicodados.ibge.gov.br/api/v3/malhas/estados/35"
-    "?intrarregiao=municipio&formato=application/vnd.geo+json&qualidade=minima"
-)
+MALHAS_BASE_URL = "https://servicodados.ibge.gov.br/api/v3/malhas/municipios"
 
 
 def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
@@ -118,14 +115,37 @@ def carregar_feed(caminho=None):
 
 
 def carregar_limites():
-    request = urllib.request.Request(
-        MALHAS_URL, headers={"User-Agent": "mesh-alerts/0.1"}
+    """Busca somente os seis polígonos necessários, evitando baixar SP inteiro."""
+    features = []
+    for codigo, nome in MUNICIPIOS.items():
+        url = (
+            f"{MALHAS_BASE_URL}/{codigo}"
+            "?formato=application/vnd.geo+json&qualidade=minima"
+        )
+        request = urllib.request.Request(
+            url, headers={"User-Agent": "mesh-alerts/0.1"}
+        )
+        data = baixar_com_retentativas(
+            request, f"malha municipal de {nome}", tentativas=2, timeout=12
+        )
+        if data[:2] == bytes((0x1f, 0x8b)):
+            data = gzip.decompress(data)
+        geojson = json.loads(data.decode("utf-8"))
+        if not isinstance(geojson, dict):
+            raise RuntimeError(f"Resposta GeoJSON inválida para {nome}")
+        if geojson.get("type") == "FeatureCollection":
+            municipal_features = geojson.get("features")
+            if not isinstance(municipal_features, list):
+                raise RuntimeError(f"GeoJSON sem lista de features para {nome}")
+            features.extend(municipal_features)
+        elif geojson.get("type") == "Feature":
+            features.append(geojson)
+        else:
+            raise RuntimeError(f"Resposta do IBGE não é GeoJSON para {nome}")
+
+    return limites_municipais_do_geojson(
+        {"type": "FeatureCollection", "features": features}
     )
-    data = baixar_com_retentativas(request, "malha municipal do IBGE")
-    if data[:2] == bytes((0x1f, 0x8b)):
-        data = gzip.decompress(data)
-    geojson = json.loads(data.decode("utf-8"))
-    return limites_municipais_do_geojson(geojson)
 
 
 def avisos_poligonos_invalidos(alert, now=None):

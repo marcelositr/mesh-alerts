@@ -60,7 +60,7 @@ Execute os testes unitários sem acessar a rede:
 python3 -m unittest discover -s tests -v
 ```
 
-Os testes cobrem a interpretação temporal do CAP, polígonos, círculos e referências de atualização/cancelamento. A validação territorial ainda depende de consultar as malhas do IBGE. Quando um alerta cruza municípios monitorados, mas seus códigos IBGE apontam exclusivamente para outros estados, o script exibe um aviso de consistência geográfica. Polígonos inválidos também são identificados antes do reparo. O aviso não descarta nem altera o alerta: a geometria CAP continua sendo avaliada.
+Os testes cobrem a interpretação temporal do CAP, polígonos, círculos e referências de atualização/cancelamento. A validação territorial ainda depende de consultar as malhas do IBGE para cruzar polígonos e círculos. Códigos geográficos CAP com `valueName=IBGE` também são cruzados diretamente com os seis códigos municipais monitorados, inclusive quando a área não contém polígonos ou círculos. Quando um alerta cruza municípios monitorados, mas seus códigos IBGE apontam exclusivamente para outros estados, o script exibe um aviso de consistência geográfica. Polígonos inválidos também são identificados antes do reparo. Os avisos não descartam nem alteram o alerta: a geometria CAP continua sendo avaliada.
 
 ## Próximas etapas
 

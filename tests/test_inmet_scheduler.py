@@ -44,7 +44,11 @@ class InmetSchedulerTests(unittest.TestCase):
         )
         self.assertEqual(result["prepared"], 2)
         self.assertEqual(calls, [])
-        self.assertFalse(self.database.exists())
+        self.assertTrue(self.database.exists())
+        import sqlite3
+        with sqlite3.connect(self.database) as connection:
+            rows = connection.execute("SELECT COUNT(*) FROM inmet_bulletins").fetchone()[0]
+        self.assertEqual(rows, 0)
 
     def test_successful_bulletin_is_persisted_and_duplicate_run_sends_nothing(self):
         calls, delays = [], []

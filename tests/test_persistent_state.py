@@ -86,6 +86,27 @@ class AlertStateStoreTests(unittest.TestCase):
         self.assertEqual(self.store.list_outbox(), [])
         self.assertEqual(self.store.get_alert("civil.defesa@example.gov.br", "alert-001")["active"], 0)
 
+    def test_pending_alert_is_not_sent_after_expiry(self):
+        self.assertEqual(self.add_alert(), "queued")
+        self.assertEqual(
+            self.store.invalidate_stale_pending(now=datetime(2026, 10, 22, 16, 0, tzinfo=timezone.utc)),
+            1,
+        )
+        self.assertEqual(self.store.list_outbox(status="pending"), [])
+        self.assertEqual(self.store.list_outbox(status="failed")[0]["action"], "alert")
+
+    def test_update_invalidates_old_pending_alert(self):
+        self.assertEqual(self.add_alert(), "queued")
+        self.add_alert(
+            identifier="alert-002",
+            msg_type="Update",
+            references=[("civil.defesa@example.gov.br", "alert-001")],
+            matches_region=False,
+            message_text=None,
+        )
+        self.assertEqual(self.store.list_outbox(status="pending"), [])
+        self.assertEqual(self.store.list_outbox(status="failed")[0]["identifier"], "alert-001")
+
     def test_pending_send_survives_restart_and_is_claimed_once(self):
         self.add_alert()
         first = self.store.claim_next()

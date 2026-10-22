@@ -191,7 +191,7 @@ def main(argv=None):
 
     try:
         root = carregar_feed(args.feed)
-    except (ET.ParseError, OSError, ValueError) as exc:
+    except (ET.ParseError, OSError, ValueError, RuntimeError) as exc:
         fonte = args.feed if args.feed else FEED_URL
         raise SystemExit(f"Não foi possível carregar o feed CAP ({fonte}): {exc}") from exc
 

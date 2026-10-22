@@ -65,6 +65,22 @@ class CapValidationTests(unittest.TestCase):
         self.assertEqual(set(boundaries), set(MUNICIPIOS))
         self.assertTrue(all(boundary.is_valid for boundary in boundaries.values()))
 
+    def test_ibge_geojson_rejects_non_feature_collection(self):
+        with self.assertRaisesRegex(RuntimeError, "FeatureCollection"):
+            limites_municipais_do_geojson({"type": "Feature", "features": []})
+
+    def test_ibge_geojson_rejects_malformed_target_geometry(self):
+        geojson = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "properties": {"codarea": "3503000"},
+                "geometry": {"type": "Polygon", "coordinates": "malformed"},
+            }],
+        }
+        with self.assertRaisesRegex(RuntimeError, "Geometria inválida"):
+            limites_municipais_do_geojson(geojson)
+
     def test_ibge_geojson_rejects_incomplete_municipality_set(self):
         geojson = {"type": "FeatureCollection", "features": []}
         with self.assertRaisesRegex(RuntimeError, "Malha municipal incompleta"):

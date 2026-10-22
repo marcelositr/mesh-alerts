@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-from typing import Iterable
 
 from shapely.geometry import Polygon
 
@@ -145,10 +144,9 @@ def active_alert_entries(root: ET.Element, now: datetime) -> tuple[list[tuple[ET
         if msg_type == "Cancel" or identifier in suppressed:
             continue
         sent_raw = alert.findtext("c:sent", default="", namespaces=NS)
-        if sent_raw:
-            sent = parse_cap_datetime(sent_raw)
-            if sent is None or sent > now.astimezone(timezone.utc):
-                continue
+        sent = parse_cap_datetime(sent_raw)
+        if sent is None or sent > now.astimezone(timezone.utc):
+            continue
 
         infos = alert.findall("c:info", NS)
         has_current_info = False

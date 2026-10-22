@@ -168,6 +168,7 @@ def process_feed(root: ET.Element, store: AlertStateStore, boundaries, now: date
             references=sorted(refs),
             expires_at=expires_at,
             matches_region=matches_region,
+            is_current=is_current,
             message_text=message,
             destination=destination,
             now=now,

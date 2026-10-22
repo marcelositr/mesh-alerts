@@ -1,0 +1,42 @@
+# Configuração principal do mesh-alerts.
+# Copie e edite este arquivo para adaptar o serviço à sua região.
+# Os códigos IBGE devem ser strings de sete dígitos.
+
+regiao:
+  nome: "Região de Ituverava"
+  estado: "São Paulo"
+  uf: "SP"
+
+municipios:
+  - nome: "Aramina"
+    codigo_ibge: "3503000"
+  - nome: "Buritizal"
+    codigo_ibge: "3508207"
+  - nome: "Guará"
+    codigo_ibge: "3517703"
+  - nome: "Igarapava"
+    codigo_ibge: "3520103"
+  - nome: "Ituverava"
+    codigo_ibge: "3524105"
+  - nome: "Miguelópolis"
+    codigo_ibge: "3529708"
+
+meshtastic:
+  host: "meshtastic-node.local"
+  porta: 4403
+  canal: 0
+  destino: "^all"
+
+servico:
+  intervalo_segundos: 60
+  banco: "data/mesh-alerts.sqlite3"
+  diretorio_txt: "output"
+  nivel_log: "INFO"
+  timeout_http_segundos: 25
+  tentativas_feed: 3
+  tentativas_malha_ibge: 2
+  limite_mensagem_caracteres: 220
+
+fontes:
+  feed_cap: "https://idapfile.mdr.gov.br/idap/api/rss/cap"
+  malhas_ibge: "https://servicodados.ibge.gov.br/api/v3/malhas/municipios"

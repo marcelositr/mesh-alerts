@@ -1,4 +1,4 @@
-name: Python tests and live CAP validation
+name: Python unit tests
 
 on:
   push:

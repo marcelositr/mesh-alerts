@@ -69,7 +69,7 @@ def carregar_limites():
     )
     with urllib.request.urlopen(request, timeout=45) as response:
         data = response.read()
-    if data[:2] == b"\\x1f\\x8b":
+    if data[:2] == bytes((0x1f, 0x8b)):
         data = gzip.decompress(data)
     geojson = json.loads(data.decode("utf-8"))
     return limites_municipais_do_geojson(geojson)

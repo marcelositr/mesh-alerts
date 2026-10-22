@@ -1,11 +1,14 @@
+import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from pathlib import Path
 
 from shapely.geometry import box
 
 from testar_alertas_regiao_ituverava import (
     MUNICIPIOS,
+    carregar_feed,
     limites_municipais_do_geojson,
 )
 
@@ -29,6 +32,14 @@ class CapValidationTests(unittest.TestCase):
     def info(self, fields):
         parts = "".join(f"<c:{key}>{value}</c:{key}>" for key, value in fields.items())
         return ET.fromstring(f'<c:info xmlns:c="{NS["c"]}">{parts}</c:info>')
+
+    def test_local_cap_feed_file_is_parsed(self):
+        xml = '<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sample.xml"
+            path.write_text(xml, encoding="utf-8")
+            root = carregar_feed(path)
+        self.assertEqual(root.tag, "{http://www.w3.org/2005/Atom}feed")
 
     def test_ibge_geojson_loads_all_six_valid_municipalities(self):
         geometry = {

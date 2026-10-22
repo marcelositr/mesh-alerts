@@ -18,6 +18,11 @@ from shapely.validation import explain_validity
 from mesh_alerts_config import ConfigError, load_config, municipality_map
 from mesh_alerts_cap import NS, active_alert_entries, info_is_current, intersecting_municipalities, polygon_from_cap
 
+DEFAULT_CONFIG = load_config()
+MUNICIPIOS = municipality_map(DEFAULT_CONFIG)
+FEED_URL = DEFAULT_CONFIG["fontes"]["feed_cap"]
+MALHAS_BASE_URL = DEFAULT_CONFIG["fontes"]["malhas_ibge"]
+
 
 def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
     ultimo_erro = None
@@ -42,7 +47,7 @@ def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
 
 
 def limites_municipais_do_geojson(geojson, municipios=None):
-    municipios = municipios or municipality_map(load_config())
+    municipios = municipios or MUNICIPIOS
     if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
         raise RuntimeError("Resposta do IBGE não é um GeoJSON FeatureCollection")
     features = geojson.get("features")
@@ -81,7 +86,7 @@ def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
     if caminho:
         data = Path(caminho).read_bytes()
     else:
-        request = urllib.request.Request(feed_url or load_config()["fontes"]["feed_cap"], headers={"User-Agent": "mesh-alerts/0.1"})
+        request = urllib.request.Request(feed_url or FEED_URL, headers={"User-Agent": "mesh-alerts/0.1"})
         data = baixar_com_retentativas(request, "feed CAP", tentativas=tentativas, timeout=timeout)
     if data[:2] == bytes((0x1f, 0x8b)):
         data = gzip.decompress(data)

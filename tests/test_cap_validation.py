@@ -144,9 +144,21 @@ class CapValidationTests(unittest.TestCase):
         info = self.info({"expires": "2026-10-22T17:59:59Z"})
         self.assertEqual(info_is_current(info, self.now), (False, "expires expirado"))
 
-    def test_future_onset_is_not_current(self):
-        info = self.info({"onset": "2026-10-22T18:01:00Z"})
-        self.assertEqual(info_is_current(info, self.now), (False, "onset futuro"))
+    def test_future_onset_does_not_deactivate_current_warning(self):
+        info = self.info({
+            "effective": "2026-10-22T17:00:00Z",
+            "onset": "2026-10-22T18:01:00Z",
+            "expires": "2026-10-22T19:00:00Z",
+        })
+        self.assertEqual(info_is_current(info, self.now), (True, None))
+
+    def test_future_effective_is_not_current(self):
+        info = self.info({"effective": "2026-10-22T18:01:00Z"})
+        self.assertEqual(info_is_current(info, self.now), (False, "effective futuro"))
+
+    def test_malformed_onset_fails_closed(self):
+        info = self.info({"onset": "not-a-time"})
+        self.assertEqual(info_is_current(info, self.now), (False, "timestamp onset inválido"))
 
     def test_malformed_expiry_fails_closed(self):
         info = self.info({"expires": "not-a-time"})

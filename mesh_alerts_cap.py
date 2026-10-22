@@ -45,18 +45,30 @@ def info_is_current(info: ET.Element, now: datetime) -> tuple[bool, str | None]:
 
 
 def polygon_from_cap(value: str) -> Polygon | None:
-    """Convert CAP polygon 'lat,lon lat,lon ...' to a valid WGS84 polygon."""
-    coords = []
-    for pair in (value or "").split():
-        try:
-            lat, lon = (float(part) for part in pair.split(","))
-        except (ValueError, TypeError):
-            continue
-        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-            continue
-        coords.append((lon, lat))
-    if len(coords) < 3:
+    """Convert a closed CAP polygon 'lat,lon ... lat,lon' to valid WGS84 geometry."""
+    pairs = (value or "").split()
+    if len(pairs) < 4:
         return None
+
+    coords = []
+    for pair in pairs:
+        try:
+            parts = pair.split(",")
+            if len(parts) != 2:
+                return None
+            lat, lon = (float(part) for part in parts)
+        except (ValueError, TypeError):
+            return None
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            return None
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            return None
+        coords.append((lon, lat))
+
+    # CAP polygon boundaries must explicitly repeat the first point at the end.
+    if coords[0] != coords[-1]:
+        return None
+
     try:
         polygon = Polygon(coords)
         if not polygon.is_valid:
@@ -76,7 +88,7 @@ def circle_from_cap(value: str, points: int = 72) -> Polygon | None:
         radius_km = float(radius_text.strip())
     except (ValueError, TypeError):
         return None
-    if not (-90 <= lat1 <= 90 and -180 <= lon1 <= 180 and radius_km > 0):
+    if not (math.isfinite(lat1) and math.isfinite(lon1) and math.isfinite(radius_km)):\n        return None\n    if not (-90 <= lat1 <= 90 and -180 <= lon1 <= 180 and radius_km > 0):
         return None
     if points < 12:
         points = 12

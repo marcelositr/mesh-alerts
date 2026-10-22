@@ -56,7 +56,8 @@ def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
 
 def limites_municipais_do_geojson(geojson, municipios=None):
     """Extrai e valida os seis limites municipais de um GeoJSON do IBGE."""
-    municipios = municipios or MUNICIPIOS\n    if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
+    municipios = municipios or MUNICIPIOS
+    if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
         raise RuntimeError("Resposta do IBGE não é um GeoJSON FeatureCollection")
     features = geojson.get("features")
     if not isinstance(features, list):
@@ -81,10 +82,10 @@ def limites_municipais_do_geojson(geojson, municipios=None):
             geometry = shape(geometry_data)
         except Exception as exc:
             raise RuntimeError(
-                f"Geometria inválida para {MUNICIPIOS[codigo]}"
+                f"Geometria inválida para {municipios[codigo]}"
             ) from exc
         if geometry.is_empty or not geometry.is_valid:
-            raise RuntimeError(f"Geometria vazia ou inválida para {MUNICIPIOS[codigo]}")
+            raise RuntimeError(f"Geometria vazia ou inválida para {municipios[codigo]}")
         limites[codigo] = geometry
 
     if len(limites) != len(municipios):
@@ -236,7 +237,11 @@ def main(argv=None):
         raise SystemExit(f"Não foi possível carregar o feed CAP ({fonte}): {exc}") from exc
 
     try:
-        limites = carregar_limites(\n            municipios, fontes["malhas_ibge"],\n            timeout=servico["timeout_http_segundos"],\n            tentativas=servico["tentativas_malha_ibge"],\n        )
+        limites = carregar_limites(
+            municipios, fontes["malhas_ibge"],
+            timeout=servico["timeout_http_segundos"],
+            tentativas=servico["tentativas_malha_ibge"],
+        )
     except Exception as exc:
         raise SystemExit(f"Falha ao carregar limites municipais do IBGE: {exc}") from exc
 

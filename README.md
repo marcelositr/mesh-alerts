@@ -6,12 +6,12 @@ Serviço leve para validar alertas da Defesa Civil e do INMET e preparar mensage
 
 O repositório está na fase de validação de dados. O teste regional do CAP da Defesa Civil cruza áreas de alerta com os limites dos municípios de Aramina, Buritizal, Guará, Igarapava, Ituverava e Miguelópolis.
 
-**Ainda não há publicação para rádios, MQTT ou canais Meshtastic.** A validação geográfica não substitui os avisos oficiais da Defesa Civil.
+Há um serviço contínuo experimental para preparar mensagens regionais e enviá-las a um nó Meshtastic por TCP. Ele não usa MQTT. A validação geográfica não substitui os avisos oficiais da Defesa Civil; teste em ambiente controlado antes de uso operacional.
 
 ## Requisitos
 
 - Python 3.10 ou superior
-- Dependência Python declarada em `requirements.txt`
+- Dependências Python declaradas em `requirements.txt` (`Shapely` e cliente `meshtastic`)
 
 Instalação:
 
@@ -64,9 +64,34 @@ Os testes unitários cobrem interpretação temporal, polígonos, círculos, ref
 
 A interpretação temporal considera `effective` e `expires` para decidir se um bloco está vigente. Um `onset` futuro não desativa o aviso: ele indica quando o evento é esperado para começar. Datas fornecidas, mas malformadas, fazem o bloco ser rejeitado. Códigos geográficos CAP com `valueName=IBGE` também são cruzados diretamente com os seis municípios monitorados, inclusive quando a área não contém polígonos ou círculos. Quando há interseção geométrica, mas os códigos IBGE apontam exclusivamente para outros estados, o script exibe um aviso. Polígonos inválidos são diagnosticados antes do reparo e a geometria reparada continua sendo avaliada.
 
-**Limite de uso:** este estágio monitora e imprime resultados no terminal. Não envia mensagens a rádios, MQTT ou canais Meshtastic, não roda como serviço contínuo e não substitui os canais oficiais da Defesa Civil. Para alertas operacionais, mantenha as fontes oficiais como referência e investigue qualquer falha na consulta ao vivo.
+## Serviço contínuo e transmissão TCP
 
-## Próxima etapa
+O serviço consulta o feed CAP, cruza alertas com os seis municípios monitorados, grava mensagens TXT e mantém uma fila de saída persistente em SQLite. Quando há mensagens pendentes, conecta-se ao nó Meshtastic com TCP habilitado.
 
-- Avaliar severidade, urgência, certeza e instruções na saída.
-- Só depois projetar e testar a integração de saída para Meshtastic.
+Exemplo de execução:
+
+```bash
+python3 mesh_alerts_service.py \
+  --tcp-host 192.168.0.2 \
+  --tcp-port 4403 \
+  --channel-index 0 \
+  --database data/mesh-alerts.sqlite3 \
+  --output-dir output \
+  --interval 60
+```
+
+Use o endereço e a porta do seu próprio nó. O nó precisa estar acessível pela rede e com a interface TCP habilitada. Para executar um único ciclo, acrescente `--once`. O diretório do banco deve ficar em armazenamento local persistente; não coloque o banco em `/tmp`, nem apague ou substitua o arquivo entre reinicializações.
+
+### Persistência e recuperação
+
+- O SQLite usa transações, WAL e sincronização `FULL`; alertas e mensagens enfileiradas sobrevivem à reinicialização.
+- A identidade do alerta usa o par CAP `sender` + `identifier`. O mesmo alerta não cria uma segunda mensagem na fila.
+- Atualizações e cancelamentos desativam os alertas referenciados, mesmo quando a nova área já não cruza os municípios monitorados.
+- Falhas de transporte identificadas voltam à fila para nova tentativa.
+- Se o processo cair enquanto um envio estiver em andamento, a mensagem vira `uncertain` e **não é reenviada automaticamente**, para evitar duplicações silenciosas. Essa decisão pode deixar uma mensagem sem entrega caso a queda tenha ocorrido antes do envio efetivo.
+- Consulte os IDs de envios incertos no banco e resolva cada caso explicitamente. Para marcar como enviado: `python3 mesh_alerts_service.py --database data/mesh-alerts.sqlite3 --resolve-uncertain ID --resolution sent`. Para autorizar nova tentativa: substitua `sent` por `retry`. A opção `retry` pode produzir duplicação se a mensagem já tiver chegado à rede.
+- O status `sent` significa que a chamada de envio foi aceita pelo cliente Meshtastic TCP. Não é confirmação de recepção pelo rádio ou pelo destinatário.
+
+O TXT é uma cópia legível da mensagem preparada para transmissão. Proteja o banco e o diretório de saída de acordo com a política local de retenção. Mantenha a máquina e o nó Meshtastic ligados, e use um supervisor de processo do sistema operacional para reiniciar o serviço depois de falhas.
+
+**Estado de maturidade:** esta implementação precisa passar pela CI e por testes controlados com um nó Meshtastic antes de ser considerada pronta para uso operacional. Ela não substitui os canais oficiais da Defesa Civil.

@@ -136,11 +136,7 @@ def avisos_poligonos_invalidos(alert, now=None):
                 )
                 continue
 
-            if original.is_empty or original.area == 0:
-                avisos.append(
-                    f"polígono CAP #{numero} degenerado; geometria ignorada no cruzamento"
-                )
-            elif not original.is_valid:
+            if not original.is_valid:
                 repaired = polygon_from_cap(node.text or "")
                 if repaired is None:
                     avisos.append(
@@ -150,8 +146,12 @@ def avisos_poligonos_invalidos(alert, now=None):
                 else:
                     avisos.append(
                         f"polígono CAP #{numero} inválido "
-                        f"({explain_validity(original)}); reparo geométrico aplicado"
+                        f"({explain_validity(original)}); geometria reparada com make_valid"
                     )
+            elif original.is_empty or original.area == 0:
+                avisos.append(
+                    f"polígono CAP #{numero} degenerado; geometria ignorada no cruzamento"
+                )
     return avisos
 
 def avisos_metadados_geograficos(alert):

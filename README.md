@@ -71,7 +71,7 @@ Para deixar o processo verificando os horários configurados, ainda em simulaç�
 python3 executar_boletins_inmet.py --loop
 ```
 
-O agendador consulta os horários locais 06:00, 12:00 e 18:00 e seleciona, respectivamente, manhã, tarde e noite da data atual. Se o período de hoje não estiver disponível, não substitui por uma previsão futura. O estado de envios reais fica em SQLite, por data, período e município.
+O agendador consulta os horários locais 06:00, 12:00 e 18:00 e seleciona, respectivamente, manhã, tarde e noite da data atual. A janela de recuperação de 30 minutos permite retomar um ciclo após reinicialização; municípios já registrados no SQLite não são reenviados, e o intervalo restante entre transmissões é respeitado. Se o período de hoje não estiver disponível, não substitui por uma previsão futura. O estado de envios reais fica em SQLite, por data, período e município.
 
 **Somente para habilitar transmissão real via TCP**, informe o host do dispositivo Meshtastic e a opção explícita `--send`:
 
@@ -126,7 +126,7 @@ Execute os testes unitários sem acessar a rede:
 python3 -m unittest discover -s tests -v
 ```
 
-Os testes cobrem interpretação CAP, validade temporal, geometria, atualizações/cancelamentos, seleção estrita da data e período INMET, formatação compacta e configuração. O workflow `Python unit tests` executa os testes unitários sem depender das APIs externas.
+Os testes cobrem interpretação CAP, validade temporal, geometria, atualizações/cancelamentos, seleção estrita da data e período INMET, formatação compacta, configuração, recuperação do agendador, pacing e prevenção de reenvio automático. O workflow `Python unit tests` executa os testes unitários sem depender das APIs externas.
 
 A validação ao vivo CAP/IBGE fica separada no workflow `Live CAP and IBGE validation`, que pode ser iniciada manualmente e também está agendada a cada seis horas. Uma falha de rede nessa etapa não significa, por si só, que a lógica geográfica esteja com defeito.
 

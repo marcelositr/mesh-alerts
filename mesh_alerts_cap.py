@@ -32,17 +32,23 @@ def parse_cap_datetime(value: str | None) -> datetime | None:
 def info_is_current(info: ET.Element, now: datetime) -> tuple[bool, str | None]:
     """Check effective/onset/expires; malformed supplied timestamps fail closed."""
     now = now.astimezone(timezone.utc)
-    for field in ("effective", "onset", "expires"):
+    # "onset" describes when the event is expected to begin, not when
+    # the warning itself becomes effective. A warning may be current before onset.
+    for field in ("effective", "expires"):
         raw = info.findtext(f"c:{field}", default="", namespaces=NS).strip()
         if not raw:
             continue
         parsed = parse_cap_datetime(raw)
         if parsed is None:
             return False, f"timestamp {field} inválido"
-        if field in ("effective", "onset") and parsed > now:
-            return False, f"{field} futuro"
+        if field == "effective" and parsed > now:
+            return False, "effective futuro"
         if field == "expires" and parsed <= now:
             return False, "expires expirado"
+    # Validate a supplied onset even though a future onset does not deactivate it.
+    onset = info.findtext("c:onset", default="", namespaces=NS).strip()
+    if onset and parse_cap_datetime(onset) is None:
+        return False, "timestamp onset inválido"
     return True, None
 
 

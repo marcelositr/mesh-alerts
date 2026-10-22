@@ -55,7 +55,11 @@ def carregar_configuracao(caminho: str | Path = DEFAULT_CONFIG_PATH) -> dict[str
             raise ValueError(f"Horário inválido: {horario!r}. Use HH:MM.")
         if periodo not in PERIODOS_VALIDOS:
             raise ValueError(f"Período INMET inválido para {horario}: {periodo!r}.")
-    for chave in ("intervalo_entre_mensagens_segundos", "intervalo_entre_municipios_segundos"):
+    for chave in (
+        "intervalo_entre_mensagens_segundos",
+        "intervalo_entre_municipios_segundos",
+        "janela_recuperacao_minutos",
+    ):
         valor = inmet.get(chave)
         if not isinstance(valor, int) or isinstance(valor, bool) or valor < 0:
             raise ValueError(f"inmet.{chave} deve ser um inteiro maior ou igual a zero.")

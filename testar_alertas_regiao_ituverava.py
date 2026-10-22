@@ -31,22 +31,28 @@ MALHAS_URL = (
 )
 
 
-def carregar_limites():
-    request = urllib.request.Request(
-        MALHAS_URL, headers={"User-Agent": "mesh-alerts/0.1"}
-    )
-    with urllib.request.urlopen(request, timeout=45) as response:
-        data = response.read()
-    if data[:2] == b"\x1f\x8b":
-        data = gzip.decompress(data)
-    geojson = json.loads(data.decode("utf-8"))
-
+def limites_municipais_do_geojson(geojson):
+    """Extrai e valida os seis limites municipais de um GeoJSON do IBGE."""
     limites = {}
     for feature in geojson.get("features", []):
         props = feature.get("properties") or {}
-        codigo = str(props.get("codarea", props.get("CD_MUN", props.get("id", ""))))
-        if codigo in MUNICIPIOS:
-            limites[codigo] = shape(feature["geometry"])
+        codigo = str(
+            props.get("codarea", props.get("CD_MUN", props.get("id", "")))
+        )
+        if codigo not in MUNICIPIOS:
+            continue
+        geometry_data = feature.get("geometry")
+        if not geometry_data:
+            raise RuntimeError(f"Geometria ausente para {MUNICIPIOS[codigo]}")
+        try:
+            geometry = shape(geometry_data)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Geometria inválida para {MUNICIPIOS[codigo]}"
+            ) from exc
+        if geometry.is_empty or not geometry.is_valid:
+            raise RuntimeError(f"Geometria vazia ou inválida para {MUNICIPIOS[codigo]}")
+        limites[codigo] = geometry
 
     if len(limites) != len(MUNICIPIOS):
         faltam = [nome for code, nome in MUNICIPIOS.items() if code not in limites]
@@ -55,6 +61,18 @@ def carregar_limites():
             f"Municípios não identificados: {', '.join(faltam)}"
         )
     return limites
+
+
+def carregar_limites():
+    request = urllib.request.Request(
+        MALHAS_URL, headers={"User-Agent": "mesh-alerts/0.1"}
+    )
+    with urllib.request.urlopen(request, timeout=45) as response:
+        data = response.read()
+    if data[:2] == b"\\x1f\\x8b":
+        data = gzip.decompress(data)
+    geojson = json.loads(data.decode("utf-8"))
+    return limites_municipais_do_geojson(geojson)
 
 
 def main():

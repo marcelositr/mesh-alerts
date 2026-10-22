@@ -115,24 +115,31 @@ def executar_boletim(
     try:
         municipalities = config["municipios"]
         municipality_processed = False
+        last_delivery_time = None
         for municipality in municipalities:
             code = str(municipality["codigo_ibge"])
             exists = connection.execute(
-                "SELECT status FROM inmet_bulletins WHERE local_date=? AND period=? AND municipality_code=?",
+                "SELECT status, updated_at FROM inmet_bulletins "
+                "WHERE local_date=? AND period=? AND municipality_code=?",
                 (local_date, periodo, code),
             ).fetchone()
             if exists:
-                # A previous process may have sent this city and crashed before
-                # pacing the next one. Treat the persisted entry as a prior
-                # municipality so the next new send still observes the interval.
-                municipality_processed = True
+                # Recover the previous delivery timestamp so a restarted process
+                # waits only the remaining interval, not a fresh full interval.
+                if exists[0] in {"reserved", "sent", "failed"}:
+                    try:
+                        candidate = datetime.fromisoformat(exists[1])
+                        if last_delivery_time is None or candidate > last_delivery_time:
+                            last_delivery_time = candidate
+                    except (TypeError, ValueError):
+                        pass
                 counts["duplicate"] += 1
+                municipality_processed = True
                 continue
 
             if not simular:
                 delay = int(inmet.get("intervalo_entre_municipios_segundos", 30))
-                remaining = float(delay) if municipality_processed else 0.0
-                if not municipality_processed:
+                if last_delivery_time is None:
                     last_delivery = connection.execute(
                         "SELECT updated_at FROM inmet_bulletins "
                         "WHERE local_date=? AND period=? AND status IN ('reserved', 'sent', 'failed') "
@@ -141,11 +148,14 @@ def executar_boletim(
                     ).fetchone()
                     if last_delivery:
                         try:
-                            last_time = datetime.fromisoformat(last_delivery[0])
-                            elapsed = (instant - last_time).total_seconds()
-                            remaining = max(0.0, delay - max(0.0, elapsed))
-                        except ValueError:
-                            remaining = float(delay)
+                            last_delivery_time = datetime.fromisoformat(last_delivery[0])
+                        except (TypeError, ValueError):
+                            last_delivery_time = None
+                if last_delivery_time is not None:
+                    elapsed = (instant - last_delivery_time).total_seconds()
+                    remaining = max(0.0, delay - max(0.0, elapsed))
+                else:
+                    remaining = float(delay) if municipality_processed else 0.0
                 if remaining > 0:
                     sleep(remaining)
 

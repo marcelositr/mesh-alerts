@@ -4,7 +4,8 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from mesh_alerts_inmet_scheduler import executar_boletim, periodo_agendado
+from mesh_alerts_inmet import PrevisaoIndisponivelError
+from mesh_alerts_inmet_scheduler import executar_boletim, horario_agendado, periodo_agendado
 
 
 class InmetSchedulerTests(unittest.TestCase):
@@ -33,7 +34,8 @@ class InmetSchedulerTests(unittest.TestCase):
 
     def test_schedule_only_matches_configured_local_minute(self):
         self.assertEqual(periodo_agendado(self.config, self.now), "manha")
-        self.assertIsNone(periodo_agendado(self.config, self.now.replace(minute=1)))
+        self.assertEqual(horario_agendado(self.config, self.now.replace(minute=1)), ("06:00", "manha"))
+        self.assertIsNone(periodo_agendado(self.config, self.now.replace(minute=31)))
 
     def test_simulation_never_calls_transport_or_persists_delivery(self):
         calls = []
@@ -67,6 +69,20 @@ class InmetSchedulerTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(delays, [30])
 
+    def test_unavailable_forecast_does_not_skip_city_pacing(self):
+        delays = []
+        def builder(municipality, period, now):
+            if municipality["codigo_ibge"] == "3503000":
+                raise PrevisaoIndisponivelError("forecast not published")
+            return self.builder(municipality, period, now)
+        result = executar_boletim(
+            self.config, self.database, "manha", now=self.now,
+            enviar=lambda _: None, simular=False, construir_mensagem=builder,
+            sleep=delays.append,
+        )
+        self.assertEqual(result["unavailable"], 1)
+        self.assertEqual(result["sent"], 1)
+        self.assertEqual(delays, [30])
     def test_failed_transport_is_not_retried_automatically(self):
         calls = []
         def broken(message):

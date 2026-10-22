@@ -141,9 +141,10 @@ def avisos_metadados_geograficos(alert):
         ufs_codificadas = {codigo[:2] for codigo in codigos}
         if codigos and ufs_codificadas.isdisjoint(ufs_monitoradas):
             avisos.append(
-                f"areaDesc={area_desc or 'não informado'}; códigos IBGE="
-                f"{', '.join(codigos)} fora das UFs monitoradas "
-                f"({', '.join(sorted(ufs_monitoradas))})"
+                f"metadados administrativos: areaDesc={area_desc or 'não informado'}; "
+                f"códigos IBGE={', '.join(codigos)} apontam para UFs fora do conjunto "
+                f"monitorado ({', '.join(sorted(ufs_monitoradas)}); isso não invalida "
+                "a interseção geométrica com municípios vizinhos"
             )
 
     return avisos
@@ -195,7 +196,7 @@ def main(argv=None):
     for ident, (titulo, cidades) in sorted(achados.items()):
         print(f"- {titulo} [{ident}]: {', '.join(cidades)}")
         for aviso in avisos_por_alerta.get(ident, []):
-            print(f"  AVISO DE CONSISTÊNCIA GEOGRÁFICA: {aviso}")
+            print(f"  NOTA DE METADADOS/GEOMETRIA: {aviso}")
     print(f"Blocos de informação expirados ignorados: {expirados}")
     print(f"Áreas circulares CAP analisadas: {circulos}")
     print("Nota: círculos são aproximados por polígonos geodésicos; limites municipais vêm do IBGE.")

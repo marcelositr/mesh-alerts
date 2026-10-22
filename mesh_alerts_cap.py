@@ -103,21 +103,29 @@ def circle_from_cap(value: str, points: int = 72) -> Polygon | None:
     return None if polygon.is_empty else polygon
 
 
-def references_to_identifiers(value: str | None) -> set[str]:
-    """Extract referenced CAP identifiers from sender,identifier,sent tuples."""
-    identifiers: set[str] = set()
+def references_to_keys(value: str | None) -> set[tuple[str, str]]:
+    """Extract (sender, identifier) keys from CAP sender,identifier,sent tuples."""
+    keys: set[tuple[str, str]] = set()
     for reference in (value or "").split():
         parts = reference.split(",")
-        if len(parts) >= 2 and parts[1]:
-            identifiers.add(parts[1])
-    return identifiers
+        if len(parts) == 3 and parts[0] and parts[1] and parse_cap_datetime(parts[2]):
+            keys.add((parts[0], parts[1]))
+    return keys
+
+
+def alert_key(alert: ET.Element) -> tuple[str, str] | None:
+    """Return the CAP identity pair (sender, identifier)."""
+    sender = alert.findtext("c:sender", default="", namespaces=NS).strip()
+    identifier = alert.findtext("c:identifier", default="", namespaces=NS).strip()
+    return (sender, identifier) if sender and identifier else None
 
 
 def active_alert_entries(root: ET.Element, now: datetime) -> tuple[list[tuple[ET.Element, ET.Element]], int]:
-    """Resolve current Actual Alert/Update messages and suppress referenced old IDs."""
-    records: list[tuple[ET.Element, ET.Element, str, set[str]]] = []
-    suppressed: set[str] = set()
+    """Resolve current Actual Alert/Update messages and valid references to old IDs."""
+    records: list[tuple[ET.Element, ET.Element, str, tuple[str, str]]] = []
+    suppressed: set[tuple[str, str]] = set()
     expired_info_count = 0
+    now_utc = now.astimezone(timezone.utc)
 
     for entry in root.findall("a:entry", NS):
         alert = entry.find(".//c:alert", NS)
@@ -129,29 +137,28 @@ def active_alert_entries(root: ET.Element, now: datetime) -> tuple[list[tuple[ET
         if msg_type not in ("Alert", "Update", "Cancel"):
             continue
 
-        identifier = alert.findtext("c:identifier", default="", namespaces=NS)
-        if not identifier:
+        key = alert_key(alert)
+        sent = parse_cap_datetime(alert.findtext("c:sent", default="", namespaces=NS))
+        if key is None or sent is None or sent > now_utc:
             continue
-        references = references_to_identifiers(
+
+        # Only a message already sent can supersede an earlier alert.
+        references = references_to_keys(
             alert.findtext("c:references", default="", namespaces=NS)
         )
-        suppressed.update(references)
-        records.append((entry, alert, msg_type, references))
+        if msg_type in ("Update", "Cancel"):
+            suppressed.update(references)
+        records.append((entry, alert, msg_type, key))
 
     active: list[tuple[ET.Element, ET.Element]] = []
-    for entry, alert, msg_type, _references in records:
-        identifier = alert.findtext("c:identifier", default="", namespaces=NS)
-        if msg_type == "Cancel" or identifier in suppressed:
-            continue
-        sent_raw = alert.findtext("c:sent", default="", namespaces=NS)
-        sent = parse_cap_datetime(sent_raw)
-        if sent is None or sent > now.astimezone(timezone.utc):
+    for entry, alert, msg_type, key in records:
+        if msg_type == "Cancel" or key in suppressed:
             continue
 
         infos = alert.findall("c:info", NS)
         has_current_info = False
         for info in infos:
-            current, reason = info_is_current(info, now)
+            current, reason = info_is_current(info, now_utc)
             if not current and reason == "expires expirado":
                 expired_info_count += 1
             if current:

@@ -69,7 +69,29 @@ class InmetSchedulerTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(delays, [30])
 
-    def test_restart_waits_remaining_interval_after_previous_city_delivery(self):\n        self.database.parent.mkdir(parents=True, exist_ok=True)\n        previous_delivery = (self.now - timedelta(seconds=5)).isoformat()\n        with sqlite3.connect(self.database) as connection:\n            connection.execute(\n                "CREATE TABLE inmet_bulletins ("\n                "local_date TEXT, period TEXT, municipality_code TEXT, status TEXT, "\n                "updated_at TEXT, detail TEXT, PRIMARY KEY(local_date, period, municipality_code))"\n            )\n            connection.execute(\n                "INSERT INTO inmet_bulletins VALUES (?, ?, ?, ?, ?, NULL)",\n                ("2026-10-22", "manha", "3503000", "sent", previous_delivery),\n            )\n        delays = []\n        result = executar_boletim(\n            self.config, self.database, "manha", now=self.now,\n            enviar=lambda _: None, simular=False, construir_mensagem=self.builder,\n            sleep=delays.append,\n        )\n        self.assertEqual(result["duplicate"], 1)\n        self.assertEqual(result["sent"], 1)\n        self.assertEqual(delays, [25])\n    def test_unavailable_forecast_does_not_skip_city_pacing(self):
+    def test_restart_waits_remaining_interval_after_previous_city_delivery(self):
+        self.database.parent.mkdir(parents=True, exist_ok=True)
+        previous_delivery = (self.now - timedelta(seconds=5)).isoformat()
+        with sqlite3.connect(self.database) as connection:
+            connection.execute(
+                "CREATE TABLE inmet_bulletins ("
+                "local_date TEXT, period TEXT, municipality_code TEXT, status TEXT, "
+                "updated_at TEXT, detail TEXT, PRIMARY KEY(local_date, period, municipality_code))"
+            )
+            connection.execute(
+                "INSERT INTO inmet_bulletins VALUES (?, ?, ?, ?, ?, NULL)",
+                ("2026-10-22", "manha", "3503000", "sent", previous_delivery),
+            )
+        delays = []
+        result = executar_boletim(
+            self.config, self.database, "manha", now=self.now,
+            enviar=lambda _: None, simular=False, construir_mensagem=self.builder,
+            sleep=delays.append,
+        )
+        self.assertEqual(result["duplicate"], 1)
+        self.assertEqual(result["sent"], 1)
+        self.assertEqual(delays, [25])
+    def test_unavailable_forecast_does_not_skip_city_pacing(self):
         delays = []
         def builder(municipality, period, now):
             if municipality["codigo_ibge"] == "3503000":

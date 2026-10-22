@@ -157,6 +157,7 @@ class AlertStateStore:
         references: Sequence[tuple[str, str]] = (),
         expires_at: str | None = None,
         matches_region: bool,
+        is_current: bool = True,
         message_text: str | None = None,
         destination: str = "^all",
         now: datetime | None = None,
@@ -197,6 +198,7 @@ class AlertStateStore:
             "references": sorted(normalized_references),
             "expires_at": expires_dt.isoformat() if expires_dt else None,
             "matches_region": bool(matches_region),
+            "is_current": bool(is_current),
         })
         content_hash = _digest(canonical)
         is_expired = expires_dt is not None and expires_dt <= now_dt
@@ -230,7 +232,7 @@ class AlertStateStore:
                         ),
                     )
 
-            active = not is_expired and msg_type != "Cancel"
+            active = not is_expired and msg_type != "Cancel" and bool(is_current)
             lifecycle_state = (
                 "expired" if is_expired else
                 "cancelled" if msg_type == "Cancel" else

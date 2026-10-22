@@ -107,20 +107,10 @@ def executar_boletim(
                 message = builder(municipality, periodo, instant)
             except PrevisaoIndisponivelError as exc:
                 LOG.warning("Previsão indisponível para %s: %s", municipality["nome"], exc)
-                connection.execute(
-                    "INSERT INTO inmet_bulletins VALUES (?, ?, ?, 'unavailable', ?, ?)",
-                    (local_date, periodo, code, instant.isoformat(), str(exc)[:500]),
-                )
-                connection.commit()
                 counts["unavailable"] += 1
                 continue
             except Exception as exc:
                 LOG.exception("Falha ao preparar previsão de %s", municipality["nome"])
-                connection.execute(
-                    "INSERT INTO inmet_bulletins VALUES (?, ?, ?, 'failed', ?, ?)",
-                    (local_date, periodo, code, instant.isoformat(), str(exc)[:500]),
-                )
-                connection.commit()
                 counts["failed"] += 1
                 continue
 

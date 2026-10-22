@@ -34,9 +34,19 @@ MALHAS_URL = (
 
 def limites_municipais_do_geojson(geojson):
     """Extrai e valida os seis limites municipais de um GeoJSON do IBGE."""
+    if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
+        raise RuntimeError("Resposta do IBGE não é um GeoJSON FeatureCollection")
+    features = geojson.get("features")
+    if not isinstance(features, list):
+        raise RuntimeError("GeoJSON do IBGE não contém uma lista de features")
+
     limites = {}
-    for feature in geojson.get("features", []):
+    for feature in features:
+        if not isinstance(feature, dict):
+            continue
         props = feature.get("properties") or {}
+        if not isinstance(props, dict):
+            continue
         codigo = str(
             props.get("codarea", props.get("CD_MUN", props.get("id", "")))
         )
@@ -47,7 +57,7 @@ def limites_municipais_do_geojson(geojson):
             raise RuntimeError(f"Geometria ausente para {MUNICIPIOS[codigo]}")
         try:
             geometry = shape(geometry_data)
-        except (TypeError, ValueError) as exc:
+        except Exception as exc:
             raise RuntimeError(
                 f"Geometria inválida para {MUNICIPIOS[codigo]}"
             ) from exc

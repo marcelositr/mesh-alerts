@@ -124,6 +124,38 @@ class InmetSchedulerTests(unittest.TestCase):
         self.assertEqual(result["sent"], 1)
         self.assertEqual(delays, [25])
 
+    def test_restart_paces_each_new_city_after_the_previous_delivery(self):
+        self.config["municipios"].append(
+            {"nome": "Cidade C", "codigo_ibge": "3517703", "uf": "SP"}
+        )
+        self.database.parent.mkdir(parents=True, exist_ok=True)
+        previous_delivery = (self.now - timedelta(seconds=5)).isoformat()
+        with sqlite3.connect(self.database) as connection:
+            connection.execute(
+                "CREATE TABLE inmet_bulletins ("
+                "local_date TEXT, period TEXT, municipality_code TEXT, status TEXT, "
+                "updated_at TEXT, detail TEXT, "
+                "PRIMARY KEY(local_date, period, municipality_code))"
+            )
+            connection.execute(
+                "INSERT INTO inmet_bulletins VALUES (?, ?, ?, ?, ?, NULL)",
+                ("2026-10-22", "manha", "3503000", "sent", previous_delivery),
+            )
+        delays = []
+        result = executar_boletim(
+            self.config,
+            self.database,
+            "manha",
+            now=self.now,
+            enviar=lambda _: None,
+            simular=False,
+            construir_mensagem=self.builder,
+            sleep=delays.append,
+        )
+        self.assertEqual(result["duplicate"], 1)
+        self.assertEqual(result["sent"], 2)
+        self.assertEqual(delays, [25, 30])
+
     def test_unavailable_forecast_does_not_skip_city_pacing(self):
         delays = []
 

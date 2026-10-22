@@ -1,0 +1,39 @@
+# Configuração principal do mesh-alerts.
+# As previsões são consultadas apenas para a data local atual.
+regiao:
+  nome: "Região de Ituverava"
+  uf: "SP"
+
+municipios:
+  - codigo_ibge: "3503000"
+    nome: "Aramina"
+    uf: "SP"
+  - codigo_ibge: "3508207"
+    nome: "Buritizal"
+    uf: "SP"
+  - codigo_ibge: "3517703"
+    nome: "Guará"
+    uf: "SP"
+  - codigo_ibge: "3520103"
+    nome: "Igarapava"
+    uf: "SP"
+  - codigo_ibge: "3524105"
+    nome: "Ituverava"
+    uf: "SP"
+  - codigo_ibge: "3529708"
+    nome: "Miguelópolis"
+    uf: "SP"
+
+inmet:
+  previsao_url: "https://apiprevmet3.inmet.gov.br/previsao"
+  fuso_horario: "America/Sao_Paulo"
+  timeout_segundos: 30
+  horarios:
+    "06:00": "manha"
+    "12:00": "tarde"
+    "18:00": "noite"
+  intervalo_entre_mensagens_segundos: 3
+  intervalo_entre_municipios_segundos: 30
+
+defesa_civil:
+  feed_cap_url: "https://idapfile.mdr.gov.br/idap/api/rss/cap"

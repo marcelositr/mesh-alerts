@@ -1,23 +1,58 @@
 # mesh-alerts
 
-Serviço leve para validar alertas da Defesa Civil e do INMET e preparar mensagens regionais para redes Meshtastic via LoRa.
+Serviço leve para cruzar alertas oficiais da Defesa Civil (CAP) com municípios configurados e preparar previsões meteorológicas do INMET para distribuição futura via Meshtastic.
 
 ## Estado atual
 
-O repositório está na fase de validação de dados. O teste regional do CAP da Defesa Civil cruza áreas de alerta com os limites dos municípios de Aramina, Buritizal, Guará, Igarapava, Ituverava e Miguelópolis.
+A validação regional CAP consulta o feed oficial da Defesa Civil, interpreta validade, atualizações e cancelamentos e cruza geometrias com os municípios monitorados. A primeira etapa da integração de previsão implementa a consulta e a formatação compacta da API do INMET.
 
-**Ainda não há publicação para rádios, MQTT ou canais Meshtastic.** A validação geográfica não substitui os avisos oficiais da Defesa Civil.
+**Ainda não há envio para rádios, MQTT ou canais Meshtastic.** Nenhum teste unitário transmite mensagens. A previsão do INMET é consultada separadamente dos alertas CAP.
 
-## Requisitos
+**Escopo meteorológico:** usar somente a previsão do INMET. Os alertas meteorológicos do próprio INMET não fazem parte deste projeto.
 
-- Python 3.10 ou superior
-- Dependência Python declarada em `requirements.txt`
+## Configuração
 
-Instalação:
+Os municípios, horários, fuso horário e intervalos ficam em [config.yaml](config.yaml). A configuração inicial inclui Aramina, Buritizal, Guará, Igarapava, Ituverava e Miguelópolis.
+
+Instale as dependências:
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
+
+Os horários configurados são 06:00 (manhã), 12:00 (tarde) e 18:00 (noite), no fuso `America/Sao_Paulo`. Para cada consulta, o módulo seleciona exclusivamente a data local atual e o período correspondente. Se a API não fornecer o período de hoje, a previsão é considerada indisponível; não há fallback para dias futuros.
+
+O formato compacto da previsão tem duas linhas, por exemplo:
+
+```text
+ITUVERAVA/SP • MANHÃ
+Muitas nuvens com possibilidade de chuva isolada | 32/20°C | U85/50% | Vento fraco
+```
+
+O texto meteorológico é preservado conforme o campo `resumo` retornado pelo INMET. Temperaturas e umidade aparecem na ordem máxima/mínima. Campos de ícones e tendências são ignorados.
+
+Os intervalos configurados são de 3 segundos entre mensagens de um mesmo boletim e 30 segundos após terminar uma cidade, antes de iniciar a próxima. Como o boletim de previsão agora cabe em uma única mensagem Meshtastic, o intervalo entre mensagens dentro do boletim não se aplica à previsão compacta; a pausa entre cidades será usada quando a camada de transporte for implementada.
+
+## Validar a previsão localmente
+
+O módulo fornece funções para consultar e formatar previsões, mas não envia mensagens:
+
+```bash
+python3 - <<'PY'
+from mesh_alerts_config import carregar_configuracao
+from mesh_alerts_inmet import gerar_mensagem_municipal
+
+config = carregar_configuracao()
+for municipio in config["municipios"]:
+    try:
+        print(gerar_mensagem_municipal(municipio, "manha", config=config))
+    except Exception as erro:
+        print(f'{municipio["nome"]}: previsão indisponível: {erro}')
+    print()
+PY
+```
+
+O comando consulta a previsão da manhã da data local atual para cada município. Se o INMET não fornecer esse período para hoje, imprime o motivo e não substitui a previsão por dados futuros. O comando não transmite nada pelo rádio ou MQTT.
 
 ## Teste regional CAP
 
@@ -41,7 +76,7 @@ python3 testar_alertas_regiao_ituverava.py --feed /caminho/para/defesa-civil-cap
 
 A consulta à malha do IBGE continua sendo feita pela rede em ambos os modos. O acesso ao feed pode falhar por indisponibilidade da fonte ou da conexão; o script informa o erro e não substitui os dados por uma amostra fictícia.
 
-Os códigos IBGE utilizados são:
+Os códigos IBGE configurados são:
 
 | Município | Código |
 |---|---:|
@@ -52,6 +87,8 @@ Os códigos IBGE utilizados são:
 | Ituverava | 3524105 |
 | Miguelópolis | 3529708 |
 
+A interpretação temporal CAP considera `effective` e `expires`; um `onset` futuro não desativa o aviso. Atualizações e cancelamentos referenciados são tratados. Os cruzamentos consideram códigos IBGE, polígonos e círculos, com diagnósticos para geometrias problemáticas e metadados administrativos incompatíveis.
+
 ## Testes
 
 Execute os testes unitários sem acessar a rede:
@@ -60,13 +97,17 @@ Execute os testes unitários sem acessar a rede:
 python3 -m unittest discover -s tests -v
 ```
 
-Os testes unitários cobrem interpretação temporal, polígonos, círculos, referências de atualização/cancelamento e uma amostra CAP real com limites municipais versionados. O workflow `Python unit tests` executa esses testes sem depender da rede. A validação ao vivo fica separada no workflow `Live CAP and IBGE validation`, que pode ser iniciada manualmente e também está agendada para cada seis horas; ela consulta o feed CAP oficial e as malhas atuais do IBGE. Essa etapa depende da disponibilidade das fontes externas, e uma falha de rede não significa, por si só, que a lógica geográfica esteja com defeito.
+Os testes cobrem interpretação CAP, validade temporal, geometria, atualizações/cancelamentos, seleção estrita da data e período INMET, formatação compacta e configuração. O workflow `Python unit tests` executa os testes unitários sem depender das APIs externas.
 
-A interpretação temporal considera `effective` e `expires` para decidir se um bloco está vigente. Um `onset` futuro não desativa o aviso: ele indica quando o evento é esperado para começar. Datas fornecidas, mas malformadas, fazem o bloco ser rejeitado. Códigos geográficos CAP com `valueName=IBGE` também são cruzados diretamente com os seis municípios monitorados, inclusive quando a área não contém polígonos ou círculos. Quando há interseção geométrica, mas os códigos IBGE apontam exclusivamente para outros estados, o script exibe um aviso. Polígonos inválidos são diagnosticados antes do reparo e a geometria reparada continua sendo avaliada.
+A validação ao vivo CAP/IBGE fica separada no workflow `Live CAP and IBGE validation`, que pode ser iniciada manualmente e também está agendada a cada seis horas. Uma falha de rede nessa etapa não significa, por si só, que a lógica geográfica esteja com defeito.
 
-**Limite de uso:** este estágio monitora e imprime resultados no terminal. Não envia mensagens a rádios, MQTT ou canais Meshtastic, não roda como serviço contínuo e não substitui os canais oficiais da Defesa Civil. Para alertas operacionais, mantenha as fontes oficiais como referência e investigue qualquer falha na consulta ao vivo.
+## Próximas etapas
 
-## Próxima etapa
+- Completar a camada de agendamento e transporte, mantendo modo de simulação por padrão.
+- Integrar os boletins compactos com os horários e intervalos definidos em `config.yaml`.
+- Preparar a saída CAP para transporte sem alterar as regras já testadas.
+- Fazer validação local e CI antes de qualquer teste físico. Transmissão real só será feita com autorização explícita.
 
-- Avaliar severidade, urgência, certeza e instruções na saída.
-- Só depois projetar e testar a integração de saída para Meshtastic.
+## Licença
+
+Consulte [LICENSE](LICENSE).

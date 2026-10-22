@@ -60,10 +60,13 @@ Execute os testes unitários sem acessar a rede:
 python3 -m unittest discover -s tests -v
 ```
 
-Os testes cobrem a interpretação temporal do CAP, polígonos, círculos e referências de atualização/cancelamento. A validação territorial ainda depende de consultar as malhas do IBGE para cruzar polígonos e círculos. Códigos geográficos CAP com `valueName=IBGE` também são cruzados diretamente com os seis códigos municipais monitorados, inclusive quando a área não contém polígonos ou círculos. Quando um alerta cruza municípios monitorados, mas seus códigos IBGE apontam exclusivamente para outros estados, o script exibe um aviso de consistência geográfica. Polígonos inválidos também são identificados antes do reparo. Os avisos não descartam nem alteram o alerta: a geometria CAP continua sendo avaliada.
+Os testes unitários cobrem interpretação temporal, polígonos, círculos, referências de atualização/cancelamento e uma amostra CAP real com limites municipais versionados. O GitHub Actions também executa uma validação ao vivo: consulta o feed CAP oficial e a malha atual do IBGE, valida os seis municípios e imprime os alertas vigentes que cruzam a região. Essa etapa depende da disponibilidade das fontes externas; uma falha de rede deve ser investigada antes de concluir que o código está com defeito.
 
-## Próximas etapas
+A interpretação temporal considera `effective` e `expires` para decidir se um bloco está vigente. Um `onset` futuro não desativa o aviso: ele indica quando o evento é esperado para começar. Datas fornecidas, mas malformadas, fazem o bloco ser rejeitado. Códigos geográficos CAP com `valueName=IBGE` também são cruzados diretamente com os seis municípios monitorados, inclusive quando a área não contém polígonos ou círculos. Quando há interseção geométrica, mas os códigos IBGE apontam exclusivamente para outros estados, o script exibe um aviso. Polígonos inválidos são diagnosticados antes do reparo e a geometria reparada continua sendo avaliada.
 
-- Validar os resultados com amostras CAP reais, incluindo atualização e cancelamento.
-- Definir a política de apresentação de severidade, urgência, certeza e instruções.
+**Limite de uso:** este estágio monitora e imprime resultados no terminal. Não envia mensagens a rádios, MQTT ou canais Meshtastic, não roda como serviço contínuo e não substitui os canais oficiais da Defesa Civil. Para alertas operacionais, mantenha as fontes oficiais como referência e investigue qualquer falha na consulta ao vivo.
+
+## Próxima etapa
+
+- Avaliar severidade, urgência, certeza e instruções na saída.
 - Só depois projetar e testar a integração de saída para Meshtastic.

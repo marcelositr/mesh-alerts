@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Cruza alertas CAP do IDAP com os seis municípios da região de Ituverava."""
 
+import argparse
 import gzip
 import json
 import urllib.request
@@ -16,7 +17,7 @@ from mesh_alerts_cap import (
     intersecting_municipalities,
 )
 
-FEED = Path("/tmp/defesa-civil-cap.xml")
+FEED_URL = "https://idapfile.mdr.gov.br/idap/api/rss/cap"
 MUNICIPIOS = {
     "3503000": "Aramina",
     "3508207": "Buritizal",
@@ -63,6 +64,21 @@ def limites_municipais_do_geojson(geojson):
     return limites
 
 
+def carregar_feed(caminho=None):
+    """Carrega XML CAP de um arquivo local ou do feed oficial."""
+    if caminho:
+        data = Path(caminho).read_bytes()
+    else:
+        request = urllib.request.Request(
+            FEED_URL, headers={"User-Agent": "mesh-alerts/0.1"}
+        )
+        with urllib.request.urlopen(request, timeout=45) as response:
+            data = response.read()
+    if data[:2] == bytes((0x1f, 0x8b)):
+        data = gzip.decompress(data)
+    return ET.fromstring(data)
+
+
 def carregar_limites():
     request = urllib.request.Request(
         MALHAS_URL, headers={"User-Agent": "mesh-alerts/0.1"}
@@ -75,17 +91,21 @@ def carregar_limites():
     return limites_municipais_do_geojson(geojson)
 
 
-def main():
-    if not FEED.is_file():
-        raise SystemExit(
-            f"Feed não encontrado em {FEED}. Baixe o XML CAP para esse caminho "
-            "ou ajuste a constante FEED no script."
-        )
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Cruza alertas CAP atuais com seis municípios da região de Ituverava."
+    )
+    parser.add_argument(
+        "--feed",
+        help="caminho para um XML CAP local; sem esta opção, consulta o feed oficial",
+    )
+    args = parser.parse_args(argv)
 
     try:
-        root = ET.parse(FEED).getroot()
-    except (ET.ParseError, OSError) as exc:
-        raise SystemExit(f"Não foi possível ler o XML CAP: {exc}") from exc
+        root = carregar_feed(args.feed)
+    except (ET.ParseError, OSError, ValueError) as exc:
+        fonte = args.feed if args.feed else FEED_URL
+        raise SystemExit(f"Não foi possível carregar o feed CAP ({fonte}): {exc}") from exc
 
     try:
         limites = carregar_limites()

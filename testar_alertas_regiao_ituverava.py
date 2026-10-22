@@ -101,6 +101,30 @@ def carregar_limites():
     return limites_municipais_do_geojson(geojson)
 
 
+def avisos_metadados_geograficos(alert):
+    """Sinaliza metadados IBGE incompatíveis com os estados monitorados, sem filtrar alertas."""
+    ufs_monitoradas = {codigo[:2] for codigo in MUNICIPIOS}
+    avisos = []
+
+    for area in alert.findall(".//c:area", NS):
+        area_desc = area.findtext("c:areaDesc", default="", namespaces=NS).strip()
+        codigos = []
+        for geocode in area.findall("c:geocode", NS):
+            nome = geocode.findtext("c:valueName", default="", namespaces=NS).strip()
+            valor = geocode.findtext("c:value", default="", namespaces=NS).strip()
+            if nome.upper() == "IBGE" and valor.isdigit() and len(valor) >= 2:
+                codigos.append(valor)
+
+        ufs_codificadas = {codigo[:2] for codigo in codigos}
+        if codigos and ufs_codificadas.isdisjoint(ufs_monitoradas):
+            avisos.append(
+                f"areaDesc={area_desc or 'não informado'}; códigos IBGE="
+                f"{', '.join(codigos)} fora das UFs monitoradas "
+                f"({', '.join(sorted(ufs_monitoradas))})"
+            )
+
+    return avisos
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Cruza alertas CAP atuais com seis municípios da região de Ituverava."
@@ -127,6 +151,7 @@ def main(argv=None):
     alertas, expirados = active_alert_entries(root, agora)
 
     achados = {}
+    avisos_por_alerta = {}
     circulos = 0
     for entry, alert in alertas:
         cidades, _expirados_do_alerta, circulos_do_alerta = intersecting_municipalities(
@@ -137,11 +162,16 @@ def main(argv=None):
             ident = alert.findtext("c:identifier", default="sem-id", namespaces=NS)
             titulo = entry.findtext("a:title", default="Sem título", namespaces=NS)
             achados[ident] = (titulo, sorted(cidades))
+            avisos = avisos_metadados_geograficos(alert)
+            if avisos:
+                avisos_por_alerta[ident] = avisos
 
     print(f"Entradas no feed: {len(entries)}")
     print(f"Alertas vigentes com interseção territorial: {len(achados)}")
     for ident, (titulo, cidades) in sorted(achados.items()):
         print(f"- {titulo} [{ident}]: {', '.join(cidades)}")
+        for aviso in avisos_por_alerta.get(ident, []):
+            print(f"  AVISO DE CONSISTÊNCIA GEOGRÁFICA: {aviso}")
     print(f"Blocos de informação expirados ignorados: {expirados}")
     print(f"Áreas circulares CAP analisadas: {circulos}")
     print("Nota: círculos são aproximados por polígonos geodésicos; limites municipais vêm do IBGE.")

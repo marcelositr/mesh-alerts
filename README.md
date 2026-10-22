@@ -72,7 +72,7 @@ Exemplo de execução:
 
 ```bash
 python3 mesh_alerts_service.py \
-  --tcp-host 192.168.0.2 \
+  --tcp-host meshtastic-node.local \
   --tcp-port 4403 \
   --channel-index 0 \
   --database data/mesh-alerts.sqlite3 \

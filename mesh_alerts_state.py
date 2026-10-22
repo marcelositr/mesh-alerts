@@ -53,10 +53,11 @@ class AlertStateStore:
     """
 
     def __init__(self, database_path: str | Path):
+        if str(database_path) == ":memory:":
+            raise ValueError("database_path must be a persistent file path; per-operation connections cannot share :memory:")
         self.database_path = Path(database_path)
-        if str(database_path) != ":memory:":
-            self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._database = str(database_path)
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self._database = str(self.database_path)
         with self._connection() as connection:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.execute("PRAGMA synchronous=FULL")
@@ -322,6 +323,21 @@ class AlertStateStore:
                 """UPDATE outbox SET status=?, last_error=?, updated_at=?
                    WHERE id=? AND status='sending'""",
                 (status, str(error)[:2000], _utc_now(), outbox_id),
+            ).rowcount
+            if changed != 1:
+                raise ValueError("outbox item is not in sending state")
+
+    def mark_uncertain(self, outbox_id: int, error: str) -> None:
+        """Record that a transport attempt raised after dispatch began.
+
+        The remote outcome cannot be inferred from an exception, so the item
+        requires explicit operator resolution rather than an automatic retry.
+        """
+        with self._transaction() as connection:
+            changed = connection.execute(
+                """UPDATE outbox SET status='uncertain', last_error=?, updated_at=?
+                   WHERE id=? AND status='sending'""",
+                (str(error)[:2000], _utc_now(), outbox_id),
             ).rowcount
             if changed != 1:
                 raise ValueError("outbox item is not in sending state")

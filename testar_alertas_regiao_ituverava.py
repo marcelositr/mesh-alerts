@@ -76,11 +76,11 @@ def limites_municipais_do_geojson(geojson, municipios):
     return limites
 
 
-def carregar_feed(caminho=None, feed_url, timeout=25, tentativas=3):
+def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
     if caminho:
         data = Path(caminho).read_bytes()
     else:
-        request = urllib.request.Request(feed_url, headers={"User-Agent": "mesh-alerts/0.1"})
+        request = urllib.request.Request(feed_url or load_config()["fontes"]["feed_cap"], headers={"User-Agent": "mesh-alerts/0.1"})
         data = baixar_com_retentativas(request, "feed CAP", tentativas=tentativas, timeout=timeout)
     if data[:2] == bytes((0x1f, 0x8b)):
         data = gzip.decompress(data)

@@ -11,6 +11,7 @@ from testar_alertas_regiao_ituverava import (
     carregar_feed,
     limites_municipais_do_geojson,
     avisos_metadados_geograficos,
+    avisos_poligonos_invalidos,
 )
 
 from mesh_alerts_cap import (
@@ -41,6 +42,17 @@ class CapValidationTests(unittest.TestCase):
             path.write_text(xml, encoding="utf-8")
             root = carregar_feed(path)
         self.assertEqual(root.tag, "{http://www.w3.org/2005/Atom}feed")
+
+    def test_warns_when_cap_polygon_is_invalid_before_repair(self):
+        alert = ET.fromstring(
+            '<c:alert xmlns:c="urn:oasis:names:tc:emergency:cap:1.2"><c:info><c:area>'
+            '<c:polygon>-20,-47 -20.1,-47.1 -20,-47.1 -20.1,-47 -20,-47</c:polygon>'
+            '</c:area></c:info></c:alert>'
+        )
+        warnings = avisos_poligonos_invalidos(alert)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("polígono CAP #1 inválido", warnings[0])
+        self.assertIn("reparada", warnings[0])
 
     def test_warns_when_intersecting_alert_geocodes_are_outside_monitored_states(self):
         alert = ET.fromstring(

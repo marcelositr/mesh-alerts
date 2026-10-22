@@ -1,6 +1,7 @@
+import sqlite3
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -47,7 +48,6 @@ class InmetSchedulerTests(unittest.TestCase):
         self.assertEqual(result["prepared"], 2)
         self.assertEqual(calls, [])
         self.assertTrue(self.database.exists())
-        import sqlite3
         with sqlite3.connect(self.database) as connection:
             rows = connection.execute("SELECT COUNT(*) FROM inmet_bulletins").fetchone()[0]
         self.assertEqual(rows, 0)
@@ -69,7 +69,7 @@ class InmetSchedulerTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(delays, [30])
 
-    def test_unavailable_forecast_does_not_skip_city_pacing(self):
+    def test_restart_waits_remaining_interval_after_previous_city_delivery(self):\n        self.database.parent.mkdir(parents=True, exist_ok=True)\n        previous_delivery = (self.now - timedelta(seconds=5)).isoformat()\n        with sqlite3.connect(self.database) as connection:\n            connection.execute(\n                "CREATE TABLE inmet_bulletins ("\n                "local_date TEXT, period TEXT, municipality_code TEXT, status TEXT, "\n                "updated_at TEXT, detail TEXT, PRIMARY KEY(local_date, period, municipality_code))"\n            )\n            connection.execute(\n                "INSERT INTO inmet_bulletins VALUES (?, ?, ?, ?, ?, NULL)",\n                ("2026-10-22", "manha", "3503000", "sent", previous_delivery),\n            )\n        delays = []\n        result = executar_boletim(\n            self.config, self.database, "manha", now=self.now,\n            enviar=lambda _: None, simular=False, construir_mensagem=self.builder,\n            sleep=delays.append,\n        )\n        self.assertEqual(result["duplicate"], 1)\n        self.assertEqual(result["sent"], 1)\n        self.assertEqual(delays, [25])\n    def test_unavailable_forecast_does_not_skip_city_pacing(self):
         delays = []
         def builder(municipality, period, now):
             if municipality["codigo_ibge"] == "3503000":

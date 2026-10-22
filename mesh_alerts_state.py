@@ -57,7 +57,7 @@ class AlertStateStore:
         if str(database_path) != ":memory:":
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._database = str(database_path)
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.execute("PRAGMA synchronous=FULL")
             connection.execute("PRAGMA foreign_keys=ON")
@@ -126,6 +126,14 @@ class AlertStateStore:
         return connection
 
     @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            yield connection
+        finally:
+            connection.close()
+
+    @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
         connection = self._connect()
         try:
@@ -168,6 +176,8 @@ class AlertStateStore:
         sent_dt = _parse_aware_datetime(sent, "sent")
         expires_dt = _parse_aware_datetime(expires_at, "expires", optional=True)
         now_dt = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        if sent_dt > now_dt:
+            raise ValueError("CAP sent timestamp is in the future")
         now_text = now_dt.isoformat()
         normalized_references = []
         for ref_sender, ref_identifier in references:
@@ -334,7 +344,7 @@ class AlertStateStore:
             changed = connection.execute(
                 """UPDATE outbox SET status=?, sent_at=?, updated_at=?, last_error=NULL
                    WHERE id=? AND status='uncertain'""",
-                ( _utc_now() if status == "sent" else None, _utc_now(), outbox_id),
+                (status, _utc_now() if status == "sent" else None, _utc_now(), outbox_id),
             ).rowcount
             if changed != 1:
                 raise ValueError("outbox item is not in uncertain state")
@@ -342,7 +352,7 @@ class AlertStateStore:
     def list_outbox(self, *, status: str | None = None) -> list[dict[str, Any]]:
         if status is not None and status not in VALID_OUTBOX_STATES:
             raise ValueError(f"invalid outbox status: {status!r}")
-        with self._connect() as connection:
+        with self._connection() as connection:
             if status:
                 rows = connection.execute(
                     "SELECT * FROM outbox WHERE status=? ORDER BY id", (status,)
@@ -352,7 +362,7 @@ class AlertStateStore:
             return [dict(row) for row in rows]
 
     def get_alert(self, sender: str, identifier: str) -> dict[str, Any] | None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT * FROM cap_alerts WHERE sender=? AND identifier=?",
                 (sender, identifier),

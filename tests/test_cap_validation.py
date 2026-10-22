@@ -4,6 +4,11 @@ from datetime import datetime, timezone
 
 from shapely.geometry import box
 
+from testar_alertas_regiao_ituverava import (
+    MUNICIPIOS,
+    limites_municipais_do_geojson,
+)
+
 from mesh_alerts_cap import (
     active_alert_entries,
     circle_from_cap,
@@ -24,6 +29,47 @@ class CapValidationTests(unittest.TestCase):
     def info(self, fields):
         parts = "".join(f"<c:{key}>{value}</c:{key}>" for key, value in fields.items())
         return ET.fromstring(f'<c:info xmlns:c="{NS["c"]}">{parts}</c:info>')
+
+    def test_ibge_geojson_loads_all_six_valid_municipalities(self):
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [[
+                [-47.1, -20.1], [-47.0, -20.1],
+                [-47.0, -20.0], [-47.1, -20.0],
+                [-47.1, -20.1],
+            ]],
+        }
+        geojson = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {"codarea": code},
+                    "geometry": geometry,
+                }
+                for code in MUNICIPIOS
+            ],
+        }
+        boundaries = limites_municipais_do_geojson(geojson)
+        self.assertEqual(set(boundaries), set(MUNICIPIOS))
+        self.assertTrue(all(boundary.is_valid for boundary in boundaries.values()))
+
+    def test_ibge_geojson_rejects_incomplete_municipality_set(self):
+        geojson = {"type": "FeatureCollection", "features": []}
+        with self.assertRaisesRegex(RuntimeError, "Malha municipal incompleta"):
+            limites_municipais_do_geojson(geojson)
+
+    def test_ibge_geojson_rejects_invalid_target_geometry(self):
+        geojson = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "properties": {"codarea": "3503000"},
+                "geometry": None,
+            }],
+        }
+        with self.assertRaisesRegex(RuntimeError, "Geometria ausente"):
+            limites_municipais_do_geojson(geojson)
 
     def test_parse_cap_timestamp_normalizes_utc(self):
         parsed = parse_cap_datetime("2026-10-22T15:00:00-03:00")

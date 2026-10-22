@@ -73,6 +73,41 @@ python3 executar_boletins_inmet.py --loop
 
 O agendador consulta os horários locais 06:00, 12:00 e 18:00 e seleciona, respectivamente, manhã, tarde e noite da data atual. A janela de recuperação de 30 minutos permite retomar um ciclo após reinicialização; municípios já registrados no SQLite não são reenviados, e o intervalo restante entre transmissões é respeitado. Se o período de hoje não estiver disponível, não substitui por uma previsão futura. O estado de envios reais fica em SQLite, por data, período e município.
 
+### Execução contínua com systemd (simulação)
+
+O arquivo `deploy/systemd/mesh-alerts-inmet.service` é uma unidade de exemplo para Debian/Linux. **Ela executa em modo de simulação**: não passe `--send` nem configure transmissão real antes da validação do transporte e do rádio.
+
+O exemplo pressupõe o repositório em `/opt/mesh-alerts` e uma conta de sistema chamada `mesh-alerts`. Ajuste caminhos e permissões se a instalação for diferente.
+
+```bash
+sudo useradd --system --home-dir /opt/mesh-alerts --shell /usr/sbin/nologin mesh-alerts
+sudo install -d -o root -g mesh-alerts -m 0750 /opt/mesh-alerts
+sudo install -d -o mesh-alerts -g mesh-alerts -m 0750 /var/lib/mesh-alerts
+sudo python3 -m venv /opt/mesh-alerts/.venv
+sudo /opt/mesh-alerts/.venv/bin/pip install -r /opt/mesh-alerts/requirements.txt
+sudo install -o root -g root -m 0644 deploy/systemd/mesh-alerts-inmet.service /etc/systemd/system/mesh-alerts-inmet.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now mesh-alerts-inmet.service
+```
+
+Antes de executar esses comandos, coloque o código do projeto em `/opt/mesh-alerts` e confirme que a conta de serviço pode ler o código, a configuração e o ambiente virtual. O diretório de estado é criado pelo systemd em `/var/lib/mesh-alerts`.
+
+Verifique o serviço e os logs:
+
+```bash
+systemctl status mesh-alerts-inmet.service
+journalctl -u mesh-alerts-inmet.service -f
+```
+
+Para interromper e desabilitar o serviço:
+
+```bash
+sudo systemctl disable --now mesh-alerts-inmet.service
+```
+
+O serviço é configurado intencionalmente sem `--send`; portanto, a execução contínua não transmite mensagens. Habilitar envio real exige editar a unidade explicitamente e validar antes host, porta, canal, destino e comportamento do transporte.
+
+
 **Somente para habilitar transmissão real via TCP**, informe o host do dispositivo Meshtastic e a opção explícita `--send`:
 
 ```bash

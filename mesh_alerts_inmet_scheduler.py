@@ -125,10 +125,25 @@ def executar_boletim(
                 counts["duplicate"] += 1
                 continue
 
-            if not simular and municipality_processed:
+            if not simular:
                 delay = int(inmet.get("intervalo_entre_municipios_segundos", 30))
-                if delay > 0:
-                    sleep(delay)
+                remaining = float(delay) if municipality_processed else 0.0
+                if not municipality_processed:
+                    last_delivery = connection.execute(
+                        "SELECT updated_at FROM inmet_bulletins "
+                        "WHERE local_date=? AND period=? AND status IN ('reserved', 'sent', 'failed') "
+                        "ORDER BY updated_at DESC LIMIT 1",
+                        (local_date, periodo),
+                    ).fetchone()
+                    if last_delivery:
+                        try:
+                            last_time = datetime.fromisoformat(last_delivery[0])
+                            elapsed = (instant - last_time).total_seconds()
+                            remaining = max(0.0, delay - max(0.0, elapsed))
+                        except ValueError:
+                            remaining = float(delay)
+                if remaining > 0:
+                    sleep(remaining)
 
             municipality_processed = True
             try:

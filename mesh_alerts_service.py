@@ -199,8 +199,10 @@ def dispatch_pending(store: AlertStateStore, host: str, port: int, channel_index
                     channelIndex=channel_index,
                 )
             except Exception as exc:
-                store.mark_failed(item["id"], str(exc), retryable=True)
-                LOG.warning("Falha ao entregar item %s via TCP: %s", item["id"], exc)
+                # Once sendText has been called, an exception does not prove
+                # the message was not transmitted. Avoid an automatic duplicate.
+                store.mark_uncertain(item["id"], str(exc))
+                LOG.warning("Resultado incerto para o item %s via TCP: %s", item["id"], exc)
                 break
             else:
                 # This means the TCP client accepted the send request, not that

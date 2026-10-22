@@ -312,7 +312,15 @@ def main(argv=None):
             print(f"  NOTA DE METADADOS/GEOMETRIA: {aviso}")
     print(f"Blocos de informação expirados ignorados: {expirados}")
     print(f"Áreas circulares CAP analisadas: {circulos}")
-    print("Nota: círculos são aproximados por polígonos geodésicos; limites municipais vêm do IBGE.")
+    fonte_limites = (
+        f"GeoJSON local ({args.limites})"
+        if args.limites
+        else "API de malhas do IBGE"
+    )
+    print(
+        "Nota: círculos são aproximados por polígonos geodésicos; "
+        f"limites municipais vêm de: {fonte_limites}."
+    )
 
 
 if __name__ == "__main__":

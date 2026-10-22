@@ -87,7 +87,7 @@ class AlertStateStoreTests(unittest.TestCase):
         self.assertEqual(self.store.get_alert("civil.defesa@example.gov.br", "alert-001")["active"], 0)
 
     def test_pending_alert_is_not_sent_after_expiry(self):
-        self.assertEqual(self.add_alert(), "queued")
+        self.assertEqual(self.add_alert(expires_at=EXPIRES), "queued")
         self.assertEqual(
             self.store.invalidate_stale_pending(now=datetime(2026, 10, 22, 16, 0, tzinfo=timezone.utc)),
             1,

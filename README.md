@@ -57,11 +57,13 @@ O comando consulta a previsão da manhã da data local atual para cada municípi
 
 ## Agendador INMET
 
-Faça uma simulação pontual, sem transmitir:
+Faça uma simulação pontual do período da manhã, sem transmitir:
 
 ```bash
-python3 executar_boletins_inmet.py
+python3 executar_boletins_inmet.py --period manha
 ```
+
+Sem `--period`, o comando verifica se o horário atual corresponde a um horário agendado e encerra.
 
 Para deixar o processo verificando os horários configurados, ainda em simulação:
 
@@ -130,10 +132,8 @@ A validação ao vivo CAP/IBGE fica separada no workflow `Live CAP and IBGE vali
 
 ## Próximas etapas
 
-- Completar a camada de agendamento e transporte, mantendo modo de simulação por padrão.
-- Integrar os boletins compactos com os horários e intervalos definidos em `config.yaml`.
-- Preparar a saída CAP para transporte sem alterar as regras já testadas.
-- Fazer validação local e CI antes de qualquer teste físico. Transmissão real só será feita com autorização explícita.
+- Integrar futuramente a saída CAP com transporte, sem alterar as regras já testadas.
+- Validar a execução no ambiente local e confirmar o CI antes de qualquer teste físico. Nenhuma transmissão física foi testada nesta etapa.
 
 ## Licença
 

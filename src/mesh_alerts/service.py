@@ -13,13 +13,13 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 
-from mesh_alerts_cap import (
+from .cap import (
     NS, active_alert_entries, alert_key, info_is_current, intersecting_municipalities,
     parse_cap_datetime, references_to_keys,
 )
-from mesh_alerts_config import ConfigError, load_config, municipality_map
-from mesh_alerts_state import AlertStateStore
-from testar_alertas_regiao_ituverava import carregar_feed, carregar_limites
+from .config import ConfigError, load_config, municipality_map
+from .state import AlertStateStore
+from .region import carregar_feed, carregar_limites
 
 
 LOG = logging.getLogger("mesh-alerts")

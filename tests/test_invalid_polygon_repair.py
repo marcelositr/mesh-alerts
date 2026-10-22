@@ -2,7 +2,7 @@ import unittest
 
 from shapely.geometry import box
 
-from mesh_alerts_cap import polygon_from_cap
+from mesh_alerts.cap import polygon_from_cap
 
 
 class InvalidPolygonRepairTests(unittest.TestCase):

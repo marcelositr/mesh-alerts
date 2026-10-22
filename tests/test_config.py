@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from mesh_alerts_config import ConfigError, load_config, municipality_map
+from mesh_alerts.config import ConfigError, load_config, municipality_map
 
 
 class ConfigurationTests(unittest.TestCase):

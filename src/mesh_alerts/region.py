@@ -15,8 +15,8 @@ from pathlib import Path
 from shapely.geometry import Polygon, shape
 from shapely.validation import explain_validity
 
-from mesh_alerts_config import ConfigError, load_config, municipality_map
-from mesh_alerts_cap import NS, active_alert_entries, info_is_current, intersecting_municipalities, polygon_from_cap
+from .config import ConfigError, load_config, municipality_map
+from .cap import NS, active_alert_entries, info_is_current, intersecting_municipalities, polygon_from_cap
 
 DEFAULT_CONFIG = load_config()
 MUNICIPIOS = municipality_map(DEFAULT_CONFIG)

@@ -24,19 +24,19 @@ O programa valida o arquivo na inicialização e apresenta uma mensagem de erro 
 - Dependências listadas em `requirements.txt` (inclui Shapely, PyYAML e o cliente Meshtastic).
 
 ```bash
-python3 -m pip install -r requirements.txt
+python3 -m pip install -e .
 ```
 
 ## Validar alertas atuais
 
 ```bash
-python3 testar_alertas_regiao_ituverava.py
+python3 -m mesh_alerts.region
 ```
 
 O script lê `config.yaml`, consulta o feed CAP configurado e carrega as malhas dos municípios selecionados no IBGE. Para analisar um XML CAP local:
 
 ```bash
-python3 testar_alertas_regiao_ituverava.py --feed /caminho/para/defesa-civil-cap.xml
+python3 -m mesh_alerts.region --feed /caminho/para/defesa-civil-cap.xml
 ```
 
 O feed pode falhar por indisponibilidade externa ou de rede. O programa informa o erro e não substitui dados atuais por amostras fictícias. Os testes unitários usam amostras versionadas e não dependem da internet.
@@ -46,13 +46,13 @@ O feed pode falhar por indisponibilidade externa ou de rede. O programa informa 
 Configure `meshtastic.host` com o endereço do nó Meshtastic que tenha a interface TCP habilitada. Confira também porta, canal e destino. Inicie um único ciclo de teste com:
 
 ```bash
-python3 mesh_alerts_service.py --once
+python3 -m mesh_alerts.service --once
 ```
 
 Para executar continuamente:
 
 ```bash
-python3 mesh_alerts_service.py
+python3 -m mesh_alerts.service
 ```
 
 Argumentos como `--tcp-host`, `--tcp-port`, `--channel-index`, `--destination`, `--database`, `--output-dir` e `--interval` podem sobrescrever a configuração para uma execução pontual. As variáveis de ambiente `MESH_ALERTS_*` também continuam disponíveis para instalações existentes e para systemd; veja `deploy/mesh-alerts.env.example`.
@@ -61,7 +61,7 @@ O banco SQLite deve ficar em armazenamento local persistente. Não o coloque em 
 
 ## Execução contínua com systemd (Linux)
 
-A unidade está em `deploy/mesh-alerts.service`. O modelo pressupõe o código em `/opt/mesh-alerts`, ambiente virtual em `/opt/mesh-alerts/.venv` e usuário de serviço `mesh-alerts`. Ajuste os caminhos e permissões antes de instalar. O arquivo `config.yaml` deve estar presente no diretório de trabalho e precisa permitir que o usuário do serviço o leia.
+A unidade está em `deploy/mesh-alerts.service`. Instale o projeto no ambiente virtual com `/opt/mesh-alerts/.venv/bin/pip install -e /opt/mesh-alerts`. O modelo pressupõe o código em `/opt/mesh-alerts`, ambiente virtual em `/opt/mesh-alerts/.venv` e usuário de serviço `mesh-alerts`. Ajuste os caminhos e permissões antes de instalar. O arquivo `config.yaml` deve estar presente no diretório de trabalho e precisa permitir que o usuário do serviço o leia.
 
 O systemd pode reiniciar o processo após falhas, mas não recupera internet, energia ou o nó de rádio por conta própria.
 
@@ -72,7 +72,7 @@ O systemd pode reiniciar o processo após falhas, mas não recupera internet, en
 - Atualizações e cancelamentos desativam os alertas referenciados, mesmo quando a nova área não cruza os municípios monitorados.
 - Falhas de transporte identificadas podem retornar à fila para nova tentativa.
 - Se o processo cair enquanto um envio está em andamento, a mensagem vira `uncertain` e não é reenviada automaticamente. Isso evita duplicações silenciosas, mas pode deixar uma mensagem sem entrega.
-- Para resolver um envio incerto, use o banco correto e o ID registrado: `python3 mesh_alerts_service.py --resolve-uncertain ID --resolution sent` ou `--resolution retry`. A opção `retry` pode duplicar uma mensagem que já chegou à rede.
+- Para resolver um envio incerto, use o banco correto e o ID registrado: `python3 -m mesh_alerts.service --resolve-uncertain ID --resolution sent` ou `--resolution retry`. A opção `retry` pode duplicar uma mensagem que já chegou à rede.
 - O status `sent` significa que a chamada foi aceita pelo cliente Meshtastic TCP. Não comprova recepção por outro rádio.
 
 ## Testes

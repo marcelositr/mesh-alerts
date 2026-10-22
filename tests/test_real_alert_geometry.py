@@ -5,11 +5,11 @@ import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from testar_alertas_regiao_ituverava import (
+from mesh_alerts.region import (
     MUNICIPIOS,
     limites_municipais_do_geojson,
 )
-from mesh_alerts_cap import NS, intersecting_municipalities
+from mesh_alerts.cap import NS, intersecting_municipalities
 
 FIXTURES = Path(__file__).parent / "fixtures"
 GEOJSON = FIXTURES / "ibge-sp-municipios-api.geojson"

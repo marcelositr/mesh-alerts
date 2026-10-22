@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from mesh_alerts_service import _safe_filename, process_feed
-from mesh_alerts_state import AlertStateStore
+from mesh_alerts.service import _safe_filename, process_feed
+from mesh_alerts.state import AlertStateStore
 
 
 NOW = datetime(2026, 10, 22, 12, 0, tzinfo=timezone.utc)
@@ -48,7 +48,7 @@ class MeshAlertsServiceTests(unittest.TestCase):
             store = AlertStateStore(Path(directory) / "state.sqlite3")
             output_dir = Path(directory) / "output"
             with patch(
-                "mesh_alerts_service.intersecting_municipalities",
+                "mesh_alerts.service.intersecting_municipalities",
                 return_value=({"Ituverava"}, 0, 0),
             ):
                 first = process_feed(root, store, {}, NOW, output_dir, "^all")

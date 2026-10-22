@@ -6,7 +6,7 @@ from pathlib import Path
 
 from shapely.geometry import box
 
-from testar_alertas_regiao_ituverava import (
+from mesh_alerts.region import (
     MUNICIPIOS,
     carregar_feed,
     limites_municipais_do_geojson,
@@ -14,7 +14,7 @@ from testar_alertas_regiao_ituverava import (
     avisos_poligonos_invalidos,
 )
 
-from mesh_alerts_cap import (
+from mesh_alerts.cap import (
     active_alert_entries,
     circle_from_cap,
     info_is_current,

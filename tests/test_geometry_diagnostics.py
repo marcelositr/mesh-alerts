@@ -3,7 +3,7 @@ from unittest.mock import patch
 import urllib.error
 import xml.etree.ElementTree as ET
 
-from testar_alertas_regiao_ituverava import (
+from mesh_alerts.region import (
     avisos_poligonos_invalidos,
     baixar_com_retentativas,
 )
@@ -39,9 +39,9 @@ class NetworkRetryTests(unittest.TestCase):
                 return b"ok"
 
         with patch(
-            "testar_alertas_regiao_ituverava.urllib.request.urlopen",
+            "mesh_alerts.region.urllib.request.urlopen",
             side_effect=[urllib.error.URLError("timed out"), Response()],
-        ) as urlopen, patch("testar_alertas_regiao_ituverava.time.sleep"):
+        ) as urlopen, patch("mesh_alerts.region.time.sleep"):
             data = baixar_com_retentativas(object(), "fonte de teste")
 
         self.assertEqual(data, b"ok")
@@ -49,9 +49,9 @@ class NetworkRetryTests(unittest.TestCase):
 
     def test_raises_after_all_retries_fail(self):
         with patch(
-            "testar_alertas_regiao_ituverava.urllib.request.urlopen",
+            "mesh_alerts.region.urllib.request.urlopen",
             side_effect=urllib.error.URLError("timed out"),
-        ) as urlopen, patch("testar_alertas_regiao_ituverava.time.sleep"):
+        ) as urlopen, patch("mesh_alerts.region.time.sleep"):
             with self.assertRaisesRegex(RuntimeError, "após 3 tentativas"):
                 baixar_com_retentativas(object(), "fonte de teste")
 

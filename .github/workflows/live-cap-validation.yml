@@ -20,6 +20,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+        run: python -m pip install -e .
       - name: Validate current CAP feed against current IBGE boundaries
-        run: python testar_alertas_regiao_ituverava.py
+        run: python -m mesh_alerts.region

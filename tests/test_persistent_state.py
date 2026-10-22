@@ -3,7 +3,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from mesh_alerts_state import AlertStateStore
+from mesh_alerts.state import AlertStateStore
 
 
 NOW = datetime(2026, 10, 22, 12, 0, tzinfo=timezone.utc)

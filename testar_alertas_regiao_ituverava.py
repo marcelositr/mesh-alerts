@@ -102,26 +102,54 @@ def carregar_limites():
     return limites_municipais_do_geojson(geojson)
 
 
-def avisos_poligonos_invalidos(alert):
-    """Lista polígonos CAP inválidos antes do reparo geométrico."""
+def avisos_poligonos_invalidos(alert, now=None):
+    """Diagnostica polígonos CAP malformados ou inválidos antes do reparo."""
     avisos = []
-    for numero, node in enumerate(alert.findall(".//c:polygon", NS), 1):
-        coords = []
-        try:
-            for pair in (node.text or "").split():
-                partes = pair.split(",")
-                if len(partes) != 2:
-                    raise ValueError("par de coordenadas inválido")
-                lat, lon = (float(parte) for parte in partes)
-                coords.append((lon, lat))
-            original = Polygon(coords)
-        except (ValueError, TypeError):
+    numero = 0
+    for info in alert.findall("c:info", NS):
+        if now is not None and not info_is_current(info, now)[0]:
             continue
-        if not original.is_valid:
-            avisos.append(
-                f"polígono CAP #{numero} inválido ({explain_validity(original)}); "
-                "o cruzamento territorial usa a geometria reparada"
-            )
+        for node in info.findall(".//c:polygon", NS):
+            numero += 1
+            coords = []
+            try:
+                pairs = (node.text or "").split()
+                if len(pairs) < 4:
+                    raise ValueError("menos de quatro pares de coordenadas")
+                for pair in pairs:
+                    partes = pair.split(",")
+                    if len(partes) != 2:
+                        raise ValueError("par de coordenadas inválido")
+                    lat, lon = (float(parte) for parte in partes)
+                    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                        raise ValueError("coordenada fora dos limites WGS84")
+                    coords.append((lon, lat))
+                if coords[0] != coords[-1]:
+                    raise ValueError("anel de coordenadas não fechado")
+                original = Polygon(coords)
+            except (ValueError, TypeError) as exc:
+                avisos.append(
+                    f"polígono CAP #{numero} não interpretável ({exc}); "
+                    "geometria ignorada no cruzamento"
+                )
+                continue
+
+            if original.is_empty or original.area == 0:
+                avisos.append(
+                    f"polígono CAP #{numero} degenerado; geometria ignorada no cruzamento"
+                )
+            elif not original.is_valid:
+                repaired = polygon_from_cap(node.text or "")
+                if repaired is None:
+                    avisos.append(
+                        f"polígono CAP #{numero} inválido "
+                        f"({explain_validity(original)}); reparo falhou e geometria foi ignorada"
+                    )
+                else:
+                    avisos.append(
+                        f"polígono CAP #{numero} inválido "
+                        f"({explain_validity(original)}); reparo geométrico aplicado"
+                    )
     return avisos
 
 def avisos_metadados_geograficos(alert):
@@ -177,22 +205,36 @@ def main(argv=None):
     achados = {}
     avisos_por_alerta = {}
     circulos = 0
+    alertas_com_geometria_problemática = 0
+    total_geometrias_problematicas = 0
     for entry, alert in alertas:
+        ident = alert.findtext("c:identifier", default="sem-id", namespaces=NS)
+        titulo = entry.findtext("a:title", default="Sem título", namespaces=NS)
+        avisos_geometria = avisos_poligonos_invalidos(alert, agora)
+        if avisos_geometria:
+            alertas_com_geometria_problemática += 1
+            total_geometrias_problematicas += len(avisos_geometria)
+
         cidades, _expirados_do_alerta, circulos_do_alerta = intersecting_municipalities(
             alert, limites, MUNICIPIOS, agora
         )
         circulos += circulos_do_alerta
         if cidades:
-            ident = alert.findtext("c:identifier", default="sem-id", namespaces=NS)
-            titulo = entry.findtext("a:title", default="Sem título", namespaces=NS)
             achados[ident] = (titulo, sorted(cidades))
-            avisos = avisos_poligonos_invalidos(alert)
+            avisos = list(avisos_geometria)
             avisos.extend(avisos_metadados_geograficos(alert))
             if avisos:
                 avisos_por_alerta[ident] = avisos
 
     print(f"Entradas no feed: {len(entries)}")
+    print(f"Alertas vigentes examinados: {len(alertas)}")
     print(f"Alertas vigentes com interseção territorial: {len(achados)}")
+    print(
+        "Diagnóstico CAP: "
+        f"{total_geometrias_problematicas} geometrias poligonais com problemas "
+        f"em {alertas_com_geometria_problemática} alertas vigentes; "
+        "detalhes listados apenas para alertas com interseção"
+    )
     for ident, (titulo, cidades) in sorted(achados.items()):
         print(f"- {titulo} [{ident}]: {', '.join(cidades)}")
         for aviso in avisos_por_alerta.get(ident, []):

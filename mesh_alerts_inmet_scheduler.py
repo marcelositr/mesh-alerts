@@ -45,14 +45,35 @@ def _connect(database: str | Path) -> sqlite3.Connection:
     return connection
 
 
-def periodo_agendado(config: dict[str, Any], now: datetime | None = None) -> str | None:
-    """Return the period only during a configured local HH:MM minute."""
-    timezone = ZoneInfo(config["inmet"].get("fuso_horario", "America/Sao_Paulo"))
+def horario_agendado(
+    config: dict[str, Any], now: datetime | None = None
+) -> tuple[str, str] | None:
+    """Return the latest due schedule slot within the configured recovery window."""
+    inmet = config["inmet"]
+    timezone = ZoneInfo(inmet.get("fuso_horario", "America/Sao_Paulo"))
     instant = now or datetime.now(timezone)
     if instant.tzinfo is None:
         instant = instant.replace(tzinfo=timezone)
     local = instant.astimezone(timezone)
-    return config["inmet"].get("horarios", {}).get(local.strftime("%H:%M"))
+    recovery_minutes = int(inmet.get("janela_recuperacao_minutos", 30))
+    current_minute = local.hour * 60 + local.minute
+    due = []
+    for scheduled_time, period in inmet.get("horarios", {}).items():
+        hour, minute = (int(part) for part in scheduled_time.split(":"))
+        scheduled_minute = hour * 60 + minute
+        elapsed = current_minute - scheduled_minute
+        if 0 <= elapsed <= recovery_minutes:
+            due.append((scheduled_minute, scheduled_time, period))
+    if not due:
+        return None
+    _, scheduled_time, period = max(due)
+    return scheduled_time, period
+
+
+def periodo_agendado(config: dict[str, Any], now: datetime | None = None) -> str | None:
+    """Return the due period, including a short recovery window after restart."""
+    slot = horario_agendado(config, now)
+    return slot[1] if slot else None
 
 
 def executar_boletim(

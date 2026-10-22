@@ -211,6 +211,10 @@ def main(argv=None) -> int:
     output_dir = args.output_dir or os.environ.get("MESH_ALERTS_OUTPUT_DIR") or service["diretorio_txt"]
     interval = args.interval if args.interval is not None else int(os.environ.get("MESH_ALERTS_INTERVAL", service["intervalo_segundos"]))
     log_level = args.log_level or service["nivel_log"]
+    if not 1 <= port <= 65535:
+        parser.error("porta TCP deve estar entre 1 e 65535")
+    if channel < 0:
+        parser.error("índice do canal não pode ser negativo")
     if interval < 10:
         parser.error("--interval/servico.intervalo_segundos deve ser de pelo menos 10 segundos")
     if args.resolve_uncertain is None and not host:

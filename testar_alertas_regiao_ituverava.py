@@ -41,7 +41,8 @@ def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
     ) from ultimo_erro
 
 
-def limites_municipais_do_geojson(geojson, municipios):
+def limites_municipais_do_geojson(geojson, municipios=None):
+    municipios = municipios or municipality_map(load_config())
     if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
         raise RuntimeError("Resposta do IBGE não é um GeoJSON FeatureCollection")
     features = geojson.get("features")

@@ -21,17 +21,25 @@ python3 -m pip install -r requirements.txt
 
 ## Teste regional CAP
 
-O script `testar_alertas_regiao_ituverava.py` lê o XML salvo em `/tmp/defesa-civil-cap.xml`, consulta as malhas municipais do IBGE e lista alertas com interseção territorial.
+O script `testar_alertas_regiao_ituverava.py` consulta o feed CAP oficial da Defesa Civil, carrega as malhas municipais do IBGE e lista alertas com interseção territorial.
 
-O XML deve ser obtido da fonte oficial do feed CAP da Defesa Civil:
+Fonte CAP:
 
 `https://idapfile.mdr.gov.br/idap/api/rss/cap`
 
-Execute:
+Execute usando dados atuais:
 
 ```bash
 python3 testar_alertas_regiao_ituverava.py
 ```
+
+Para analisar uma amostra XML já salva, sem buscar o feed CAP:
+
+```bash
+python3 testar_alertas_regiao_ituverava.py --feed /caminho/para/defesa-civil-cap.xml
+```
+
+A consulta à malha do IBGE continua sendo feita pela rede em ambos os modos. O acesso ao feed pode falhar por indisponibilidade da fonte ou da conexão; o script informa o erro e não substitui os dados por uma amostra fictícia.
 
 Os códigos IBGE utilizados são:
 

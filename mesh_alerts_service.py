@@ -204,7 +204,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     host = args.tcp_host or os.environ.get("MESH_ALERTS_TCP_HOST") or meshtastic["host"]
-    port = args.tcp_port or int(os.environ.get("MESH_ALERTS_TCP_PORT", meshtastic["porta"]))
+    port = args.tcp_port if args.tcp_port is not None else int(os.environ.get("MESH_ALERTS_TCP_PORT", meshtastic["porta"]))
     channel = args.channel_index if args.channel_index is not None else int(os.environ.get("MESH_ALERTS_CHANNEL_INDEX", meshtastic["canal"]))
     destination = args.destination or os.environ.get("MESH_ALERTS_DESTINATION") or meshtastic["destino"]
     database = args.database or os.environ.get("MESH_ALERTS_DATABASE") or service["banco"]

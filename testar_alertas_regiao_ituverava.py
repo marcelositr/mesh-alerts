@@ -15,6 +15,8 @@ from pathlib import Path
 from shapely.geometry import Polygon, shape
 from shapely.validation import explain_validity
 
+from mesh_alerts_config import ConfigError, load_config, municipality_map
+
 from mesh_alerts_cap import (
     NS,
     active_alert_entries,
@@ -23,16 +25,10 @@ from mesh_alerts_cap import (
     polygon_from_cap,
 )
 
-FEED_URL = "https://idapfile.mdr.gov.br/idap/api/rss/cap"
-MUNICIPIOS = {
-    "3503000": "Aramina",
-    "3508207": "Buritizal",
-    "3517703": "Guará",
-    "3520103": "Igarapava",
-    "3524105": "Ituverava",
-    "3529708": "Miguelópolis",
-}
-MALHAS_BASE_URL = "https://servicodados.ibge.gov.br/api/v3/malhas/municipios"
+DEFAULT_CONFIG = load_config()
+FEED_URL = DEFAULT_CONFIG["fontes"]["feed_cap"]
+MUNICIPIOS = municipality_map(DEFAULT_CONFIG)
+MALHAS_BASE_URL = DEFAULT_CONFIG["fontes"]["malhas_ibge"]
 
 
 def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
@@ -58,9 +54,9 @@ def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
     ) from ultimo_erro
 
 
-def limites_municipais_do_geojson(geojson):
+def limites_municipais_do_geojson(geojson, municipios=None):
     """Extrai e valida os seis limites municipais de um GeoJSON do IBGE."""
-    if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
+    municipios = municipios or MUNICIPIOS\n    if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
         raise RuntimeError("Resposta do IBGE não é um GeoJSON FeatureCollection")
     features = geojson.get("features")
     if not isinstance(features, list):
@@ -76,11 +72,11 @@ def limites_municipais_do_geojson(geojson):
         codigo = str(
             props.get("codarea", props.get("CD_MUN", props.get("id", "")))
         )
-        if codigo not in MUNICIPIOS:
+        if codigo not in municipios:
             continue
         geometry_data = feature.get("geometry")
         if not geometry_data:
-            raise RuntimeError(f"Geometria ausente para {MUNICIPIOS[codigo]}")
+            raise RuntimeError(f"Geometria ausente para {municipios[codigo]}")
         try:
             geometry = shape(geometry_data)
         except Exception as exc:
@@ -91,8 +87,8 @@ def limites_municipais_do_geojson(geojson):
             raise RuntimeError(f"Geometria vazia ou inválida para {MUNICIPIOS[codigo]}")
         limites[codigo] = geometry
 
-    if len(limites) != len(MUNICIPIOS):
-        faltam = [nome for code, nome in MUNICIPIOS.items() if code not in limites]
+    if len(limites) != len(municipios):
+        faltam = [nome for code, nome in municipios.items() if code not in limites]
         raise RuntimeError(
             f"Malha municipal incompleta ({len(limites)}/6). "
             f"Municípios não identificados: {', '.join(faltam)}"
@@ -100,15 +96,15 @@ def limites_municipais_do_geojson(geojson):
     return limites
 
 
-def carregar_feed(caminho=None):
+def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
     """Carrega XML CAP de um arquivo local ou do feed oficial."""
     if caminho:
         data = Path(caminho).read_bytes()
     else:
         request = urllib.request.Request(
-            FEED_URL, headers={"User-Agent": "mesh-alerts/0.1"}
+            feed_url or FEED_URL, headers={"User-Agent": "mesh-alerts/0.1"}
         )
-        data = baixar_com_retentativas(request, "feed CAP")
+        data = baixar_com_retentativas(request, "feed CAP", tentativas=tentativas, timeout=timeout)
     if data[:2] == bytes((0x1f, 0x8b)):
         data = gzip.decompress(data)
     return ET.fromstring(data)
@@ -117,16 +113,16 @@ def carregar_feed(caminho=None):
 def carregar_limites():
     """Busca somente os seis polígonos necessários, evitando baixar SP inteiro."""
     features = []
-    for codigo, nome in MUNICIPIOS.items():
+    for codigo, nome in municipios.items()
         url = (
-            f"{MALHAS_BASE_URL}/{codigo}"
+            f"{base_url}/{codigo}"
             "?formato=application/vnd.geo+json&qualidade=minima"
         )
         request = urllib.request.Request(
             url, headers={"User-Agent": "mesh-alerts/0.1"}
         )
         data = baixar_com_retentativas(
-            request, f"malha municipal de {nome}", tentativas=2, timeout=12
+            request, f"malha municipal de {nome}", tentativas=tentativas, timeout=timeout
         )
         if data[:2] == bytes((0x1f, 0x8b)):
             data = gzip.decompress(data)
@@ -236,11 +232,11 @@ def main(argv=None):
     try:
         root = carregar_feed(args.feed)
     except (ET.ParseError, OSError, ValueError, RuntimeError) as exc:
-        fonte = args.feed if args.feed else FEED_URL
+        fonte = args.feed if args.feed else fontes["feed_cap"]
         raise SystemExit(f"Não foi possível carregar o feed CAP ({fonte}): {exc}") from exc
 
     try:
-        limites = carregar_limites()
+        limites = carregar_limites(\n            municipios, fontes["malhas_ibge"],\n            timeout=servico["timeout_http_segundos"],\n            tentativas=servico["tentativas_malha_ibge"],\n        )
     except Exception as exc:
         raise SystemExit(f"Falha ao carregar limites municipais do IBGE: {exc}") from exc
 
@@ -262,7 +258,7 @@ def main(argv=None):
             total_geometrias_problematicas += len(avisos_geometria)
 
         cidades, _expirados_do_alerta, circulos_do_alerta = intersecting_municipalities(
-            alert, limites, MUNICIPIOS, agora
+            alert, limites, municipios, agora
         )
         circulos += circulos_do_alerta
         if cidades:

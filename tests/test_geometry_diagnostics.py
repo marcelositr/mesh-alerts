@@ -52,7 +52,7 @@ class NetworkRetryTests(unittest.TestCase):
             side_effect=urllib.error.URLError("timed out"),
         ) as urlopen, patch("mesh_alerts.boundaries.time.sleep"):
             with self.assertRaisesRegex(RuntimeError, "após 3 tentativas"):
-                download_with_retries(object(), "fonte de teste")
+                download_with_retries(Request("https://example.test"), "fonte de teste")
 
         self.assertEqual(urlopen.call_count, 3)
 

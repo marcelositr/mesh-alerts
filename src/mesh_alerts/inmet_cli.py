@@ -56,6 +56,10 @@ def main(argv=None) -> int:
         "--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"), default="INFO"
     )
     args = parser.parse_args(argv)
+    if not 1 <= args.tcp_port <= 65535:
+        parser.error("--tcp-port deve estar entre 1 e 65535")
+    if not 0 <= args.channel_index <= 7:
+        parser.error("--channel-index deve estar entre 0 e 7")
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

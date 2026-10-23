@@ -240,7 +240,7 @@ def main(argv=None) -> int:
             try:
                 if boundaries is None:
                     boundary_cache = Path(database).parent / "ibge-municipal-boundaries.geojson"
-                    boundaries, used_cache = carregar_limites_com_cache(
+                    boundaries, used_cache, cache_reason = carregar_limites_com_cache(
                         municipalities,
                         sources["malhas_ibge"],
                         boundary_cache,
@@ -249,7 +249,8 @@ def main(argv=None) -> int:
                     )
                     if used_cache:
                         LOG.warning(
-                            "API do IBGE indisponível; usando cache municipal validado em %s",
+                            "API do IBGE indisponível (%s); usando cache municipal validado em %s",
+                            cache_reason,
                             boundary_cache,
                         )
                 root = carregar_feed(

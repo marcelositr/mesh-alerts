@@ -94,50 +94,8 @@ def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
 
 
 def carregar_limites(municipios, base_url, timeout=12, tentativas=2):
-    base_url = base_url.rstrip("/")
-    state_base_url = (
-        base_url[: -len("/municipios")]
-        if base_url.endswith("/municipios")
-        else None
-    )
-    if state_base_url:
-        features = []
-        state_codes = sorted({code[:2] for code in municipios})
-        for state_code in state_codes:
-            query = (
-                "intrarregiao=municipio"
-                "&formato=application/vnd.geo+json"
-                "&qualidade=minima"
-            )
-            url = f"{state_base_url}/estados/{state_code}?{query}"
-            request = urllib.request.Request(
-                url, headers={"User-Agent": "mesh-alerts/0.1"}
-            )
-            data = baixar_com_retentativas(
-                request,
-                f"malhas municipais da UF {state_code}",
-                tentativas=tentativas,
-                timeout=timeout,
-            )
-            if data[:2] == bytes((0x1f, 0x8b)):
-                data = gzip.decompress(data)
-            geojson = json.loads(data.decode("utf-8"))
-            if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
-                raise RuntimeError(
-                    f"Resposta do IBGE não é GeoJSON FeatureCollection para a UF {state_code}"
-                )
-            state_features = geojson.get("features")
-            if not isinstance(state_features, list):
-                raise RuntimeError(
-                    f"GeoJSON sem lista de features para a UF {state_code}"
-                )
-            features.extend(state_features)
-
-        return limites_municipais_do_geojson(
-            {"type": "FeatureCollection", "features": features}, municipios
-        )
-
     features = []
+    base_url = base_url.rstrip("/")
     for codigo, nome in municipios.items():
         url = f"{base_url}/{codigo}?formato=application/vnd.geo+json&qualidade=minima"
         request = urllib.request.Request(url, headers={"User-Agent": "mesh-alerts/0.1"})
@@ -161,6 +119,14 @@ def carregar_limites(municipios, base_url, timeout=12, tentativas=2):
     return limites_municipais_do_geojson(
         {"type": "FeatureCollection", "features": features}, municipios
     )
+
+
+def carregar_limites_de_arquivo(caminho, municipios):
+    try:
+        geojson = json.loads(Path(caminho).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"não foi possível ler a malha municipal local {caminho}: {exc}") from exc
+    return limites_municipais_do_geojson(geojson, municipios)
 
 
 def avisos_poligonos_invalidos(alert, now=None):
@@ -234,6 +200,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Cruza alertas CAP com os municípios configurados.")
     parser.add_argument("--config", default="config.yaml", help="arquivo YAML de configuração")
     parser.add_argument("--feed", help="caminho para um XML CAP local; sem esta opção, consulta a fonte configurada")
+    parser.add_argument(
+        "--boundaries",
+        help="caminho para um GeoJSON municipal local; sem esta opção, consulta o IBGE",
+    )
     args = parser.parse_args(argv)
     try:
         config = load_config(args.config)
@@ -249,12 +219,16 @@ def main(argv=None):
         fonte = args.feed if args.feed else fontes["feed_cap"]
         raise SystemExit(f"Não foi possível carregar o feed CAP ({fonte}): {exc}") from exc
     try:
-        limites = carregar_limites(
-            municipios, fontes["malhas_ibge"], timeout=servico["timeout_http_segundos"],
-            tentativas=servico["tentativas_malha_ibge"],
-        )
+        if args.boundaries:
+            limites = carregar_limites_de_arquivo(args.boundaries, municipios)
+        else:
+            limites = carregar_limites(
+                municipios, fontes["malhas_ibge"], timeout=servico["timeout_http_segundos"],
+                tentativas=servico["tentativas_malha_ibge"],
+            )
     except Exception as exc:
-        raise SystemExit(f"Falha ao carregar limites municipais do IBGE: {exc}") from exc
+        source = f"arquivo local {args.boundaries}" if args.boundaries else "IBGE"
+        raise SystemExit(f"Falha ao carregar limites municipais ({source}): {exc}") from exc
 
     agora = datetime.now(timezone.utc)
     entries = root.findall("a:entry", NS)

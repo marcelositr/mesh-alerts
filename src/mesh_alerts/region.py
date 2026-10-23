@@ -94,8 +94,53 @@ def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
 
 
 def carregar_limites(municipios, base_url, timeout=12, tentativas=2):
-    features = []
     base_url = base_url.rstrip("/")
+    state_base_url = (
+        base_url[: -len("/municipios")]
+        if base_url.endswith("/municipios")
+        else None
+    )
+    if state_base_url:
+        features = []
+        states = {}
+        for code, name in municipios.items():
+            states.setdefault(code[:2], {})[code] = name
+
+        for state_code, state_municipalities in states.items():
+            query = (
+                "intrarregiao=municipio"
+                "&formato=application/vnd.geo+json"
+                "&qualidade=minima"
+            )
+            url = f"{state_base_url}/estados/{state_code}?{query}"
+            request = urllib.request.Request(
+                url, headers={"User-Agent": "mesh-alerts/0.1"}
+            )
+            data = baixar_com_retentativas(
+                request,
+                f"malhas municipais da UF {state_code}",
+                tentativas=tentativas,
+                timeout=timeout,
+            )
+            if data[:2] == bytes((0x1f, 0x8b)):
+                data = gzip.decompress(data)
+            geojson = json.loads(data.decode("utf-8"))
+            if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
+                raise RuntimeError(
+                    f"Resposta do IBGE não é GeoJSON FeatureCollection para a UF {state_code}"
+                )
+            state_features = geojson.get("features")
+            if not isinstance(state_features, list):
+                raise RuntimeError(
+                    f"GeoJSON sem lista de features para a UF {state_code}"
+                )
+            features.extend(state_features)
+
+        return limites_municipais_do_geojson(
+            {"type": "FeatureCollection", "features": features}, municipios
+        )
+
+    features = []
     for codigo, nome in municipios.items():
         url = f"{base_url}/{codigo}?formato=application/vnd.geo+json&qualidade=minima"
         request = urllib.request.Request(url, headers={"User-Agent": "mesh-alerts/0.1"})

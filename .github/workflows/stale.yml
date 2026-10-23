@@ -1,0 +1,28 @@
+name: Stale issues
+
+on:
+  schedule:
+    - cron: "41 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark and close inactive issues
+        uses: actions/stale@1e223db275d687790206a7acac4d1a11bd6fe629 # v10
+        with:
+          days-before-issue-stale: 60
+          days-before-issue-close: 14
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          stale-issue-label: stale
+          exempt-issue-labels: "pinned,security,in progress,keep-open"
+          stale-issue-message: "Esta issue está sem atividade há 60 dias. Ela será fechada em 14 dias se continuar inativa. Comente ou remova o rótulo stale para mantê-la aberta."
+          close-issue-message: "Issue fechada automaticamente após o período de inatividade. Se ainda for relevante, reabra-a ou crie uma nova com o contexto atualizado."
+          operations-per-run: 30
+          delete-branch: false

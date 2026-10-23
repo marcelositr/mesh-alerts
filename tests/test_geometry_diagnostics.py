@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 import urllib.error
 import xml.etree.ElementTree as ET
+from urllib.request import Request
 
 from mesh_alerts.region import avisos_poligonos_invalidos
 from mesh_alerts.boundaries import download_with_retries
@@ -40,7 +41,7 @@ class NetworkRetryTests(unittest.TestCase):
             "mesh_alerts.boundaries.urllib.request.urlopen",
             side_effect=[urllib.error.URLError("timed out"), Response()],
         ) as urlopen, patch("mesh_alerts.boundaries.time.sleep"):
-            data = download_with_retries(object(), "fonte de teste")
+            data = download_with_retries(Request("https://example.test"), "fonte de teste")
 
         self.assertEqual(data, b"ok")
         self.assertEqual(urlopen.call_count, 2)

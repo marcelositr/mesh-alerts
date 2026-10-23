@@ -131,6 +131,8 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
     if meshtastic["porta"] > 65535:
         raise ConfigError("'meshtastic.porta' deve estar entre 1 e 65535.")
     meshtastic["canal"] = _positive_int(meshtastic.get("canal"), "meshtastic.canal", 0)
+    if meshtastic["canal"] > 7:
+        raise ConfigError("'meshtastic.canal' deve estar entre 0 e 7.")
 
     service = config["servico"]
     service["intervalo_segundos"] = _positive_int(service.get("intervalo_segundos"), "servico.intervalo_segundos", 10)

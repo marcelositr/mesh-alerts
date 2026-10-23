@@ -8,7 +8,9 @@ import sys
 import time
 import urllib.error
 import urllib.request
-import xml.etree.ElementTree as ET
+
+from .http_utils import open_http_url, validate_http_url
+from defusedxml import ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,7 +30,7 @@ def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
     ultimo_erro = None
     for tentativa in range(1, tentativas + 1):
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with open_http_url(request, timeout=timeout) as response:
                 return response.read()
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             ultimo_erro = exc
@@ -86,7 +88,9 @@ def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
     if caminho:
         data = Path(caminho).read_bytes()
     else:
-        request = urllib.request.Request(feed_url or FEED_URL, headers={"User-Agent": "mesh-alerts/0.1"})
+        selected_feed_url = feed_url or FEED_URL
+        validate_http_url(selected_feed_url)
+        request = urllib.request.Request(selected_feed_url, headers={"User-Agent": "mesh-alerts/0.1"})
         data = baixar_com_retentativas(request, "feed CAP", tentativas=tentativas, timeout=timeout)
     if data[:2] == bytes((0x1f, 0x8b)):
         data = gzip.decompress(data)
@@ -95,6 +99,7 @@ def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
 
 def carregar_limites(municipios, base_url, timeout=12, tentativas=2, cache_path=None):
     base_url = base_url.rstrip("/")
+    validate_http_url(base_url)
     features = []
 
     if base_url.endswith("/municipios"):

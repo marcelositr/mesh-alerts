@@ -4,11 +4,13 @@ import unittest
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from shapely.geometry import box
 
 from mesh_alerts.region import (
     carregar_feed as load_cap_feed,
+    carregar_limites as load_municipal_boundaries,
     carregar_limites_de_arquivo as load_municipal_boundaries_from_file,
     avisos_metadados_geograficos as diagnose_geographic_metadata,
     avisos_poligonos_invalidos as diagnose_invalid_polygons,
@@ -80,6 +82,46 @@ class CapValidationTests(unittest.TestCase):
         )
         self.assertEqual(diagnose_geographic_metadata(alert), [])
 
+
+    def test_live_ibge_loader_requests_each_state_once(self):
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [[
+                [-47.1, -20.1], [-47.0, -20.1],
+                [-47.0, -20.0], [-47.1, -20.0],
+                [-47.1, -20.1],
+            ]],
+        }
+        municipalities = {code: f"Municipality {code}" for code in MUNICIPALITIES}
+        payload = json.dumps({
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {"codarea": code},
+                    "geometry": geometry,
+                }
+                for code in municipalities
+            ],
+        }).encode("utf-8")
+
+        with patch(
+            "mesh_alerts.region.baixar_com_retentativas",
+            return_value=payload,
+        ) as download:
+            boundaries = load_municipal_boundaries(
+                municipalities,
+                "https://servicodados.ibge.gov.br/api/v3/malhas/municipios",
+                timeout=5,
+                tentativas=1,
+            )
+
+        self.assertEqual(set(boundaries), set(municipalities))
+        self.assertEqual(download.call_count, 1)
+        request = download.call_args.args[0]
+        self.assertIn("/malhas/estados/35?", request.full_url)
+        self.assertIn("intrarregiao=municipio", request.full_url)
+        self.assertIn("formato=application/vnd.geo+json", request.full_url)
 
     def test_local_ibge_boundary_fixture_loads_without_network_access(self):
         fixture = Path(__file__).parent / "fixtures" / "ibge-sp-municipios-api.geojson"

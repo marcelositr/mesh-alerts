@@ -94,28 +94,68 @@ def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
 
 
 def carregar_limites(municipios, base_url, timeout=12, tentativas=2):
-    features = []
     base_url = base_url.rstrip("/")
-    for codigo, nome in municipios.items():
-        url = f"{base_url}/{codigo}?formato=application/vnd.geo+json&qualidade=minima"
-        request = urllib.request.Request(url, headers={"User-Agent": "mesh-alerts/0.1"})
-        data = baixar_com_retentativas(
-            request, f"malha municipal de {nome}", tentativas=tentativas, timeout=timeout
-        )
-        if data[:2] == bytes((0x1f, 0x8b)):
-            data = gzip.decompress(data)
-        geojson = json.loads(data.decode("utf-8"))
-        if not isinstance(geojson, dict):
-            raise RuntimeError(f"Resposta GeoJSON inválida para {nome}")
-        if geojson.get("type") == "FeatureCollection":
-            municipal_features = geojson.get("features")
-            if not isinstance(municipal_features, list):
-                raise RuntimeError(f"GeoJSON sem lista de features para {nome}")
-            features.extend(municipal_features)
-        elif geojson.get("type") == "Feature":
-            features.append(geojson)
-        else:
-            raise RuntimeError(f"Resposta do IBGE não é GeoJSON para {nome}")
+    features = []
+
+    if base_url.endswith("/municipios"):
+        state_codes = sorted({codigo[:2] for codigo in municipios})
+        state_base_url = base_url[: -len("/municipios")] + "/estados"
+        for state_code in state_codes:
+            url = (
+                f"{state_base_url}/{state_code}"
+                "?intrarregiao=municipio"
+                "&formato=application/vnd.geo+json"
+                "&qualidade=minima"
+            )
+            request = urllib.request.Request(
+                url, headers={"User-Agent": "mesh-alerts/0.1"}
+            )
+            data = baixar_com_retentativas(
+                request,
+                f"malhas municipais da UF {state_code}",
+                tentativas=tentativas,
+                timeout=timeout,
+            )
+            if data[:2] == bytes((0x1f, 0x8b)):
+                data = gzip.decompress(data)
+            geojson = json.loads(data.decode("utf-8"))
+            if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
+                raise RuntimeError(
+                    f"Resposta do IBGE não é GeoJSON FeatureCollection para a UF {state_code}"
+                )
+            state_features = geojson.get("features")
+            if not isinstance(state_features, list):
+                raise RuntimeError(
+                    f"GeoJSON sem lista de features para a UF {state_code}"
+                )
+            features.extend(state_features)
+    else:
+        for codigo, nome in municipios.items():
+            url = f"{base_url}/{codigo}?formato=application/vnd.geo+json&qualidade=minima"
+            request = urllib.request.Request(
+                url, headers={"User-Agent": "mesh-alerts/0.1"}
+            )
+            data = baixar_com_retentativas(
+                request,
+                f"malha municipal de {nome}",
+                tentativas=tentativas,
+                timeout=timeout,
+            )
+            if data[:2] == bytes((0x1f, 0x8b)):
+                data = gzip.decompress(data)
+            geojson = json.loads(data.decode("utf-8"))
+            if not isinstance(geojson, dict):
+                raise RuntimeError(f"Resposta GeoJSON inválida para {nome}")
+            if geojson.get("type") == "FeatureCollection":
+                municipal_features = geojson.get("features")
+                if not isinstance(municipal_features, list):
+                    raise RuntimeError(f"GeoJSON sem lista de features para {nome}")
+                features.extend(municipal_features)
+            elif geojson.get("type") == "Feature":
+                features.append(geojson)
+            else:
+                raise RuntimeError(f"Resposta do IBGE não é GeoJSON para {nome}")
+
     return limites_municipais_do_geojson(
         {"type": "FeatureCollection", "features": features}, municipios
     )

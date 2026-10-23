@@ -47,6 +47,16 @@ class ConfigurationTests(unittest.TestCase):
             with self.assertRaisesRegex(ConfigError, ">= 10"):
                 load_config(path)
 
+    def test_meshtastic_channel_outside_supported_range_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.yaml"
+            path.write_text(
+                yaml.safe_dump({"meshtastic": {"canal": 8}}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ConfigError, "meshtastic.canal"):
+                load_config(path)
+
     def test_invalid_inmet_timezone_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.yaml"

@@ -106,16 +106,23 @@ class CapValidationTests(unittest.TestCase):
             ],
         }).encode("utf-8")
 
-        with patch(
-            "mesh_alerts.region.baixar_com_retentativas",
-            return_value=payload,
-        ) as download:
-            boundaries = load_municipal_boundaries(
-                municipalities,
-                "https://servicodados.ibge.gov.br/api/v3/malhas/municipios",
-                timeout=5,
-                tentativas=1,
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "ibge-boundaries.geojson"
+            with patch(
+                "mesh_alerts.region.baixar_com_retentativas",
+                return_value=payload,
+            ) as download:
+                boundaries = load_municipal_boundaries(
+                    municipalities,
+                    "https://servicodados.ibge.gov.br/api/v3/malhas/municipios",
+                    timeout=5,
+                    tentativas=1,
+                    cache_path=cache_path,
+                )
+            cached_boundaries = load_municipal_boundaries_from_file(
+                cache_path, municipalities
             )
+            self.assertEqual(set(cached_boundaries), set(municipalities))
 
         self.assertEqual(set(boundaries), set(municipalities))
         self.assertEqual(download.call_count, 1)

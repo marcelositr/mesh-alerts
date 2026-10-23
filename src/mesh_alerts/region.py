@@ -205,13 +205,14 @@ def carregar_limites_com_cache(
 ):
     """Load current IBGE boundaries, falling back to a previously validated local cache."""
     try:
-        return carregar_limites(
+        boundaries = carregar_limites(
             municipios,
             base_url,
             timeout=timeout,
             tentativas=tentativas,
             cache_path=cache_path,
-        ), False
+        )
+        return boundaries, False, None
     except Exception as live_error:
         cache_file = Path(cache_path)
         if not cache_file.is_file():
@@ -230,7 +231,7 @@ def carregar_limites_com_cache(
                 f"IBGE indisponível ({live_error}) e cache municipal inválido "
                 f"({cache_file}: {cache_error})"
             ) from live_error
-        return boundaries, True
+        return boundaries, True, str(live_error)
 
 
 def avisos_poligonos_invalidos(alert, now=None):

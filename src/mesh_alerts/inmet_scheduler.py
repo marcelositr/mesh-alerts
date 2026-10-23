@@ -165,7 +165,7 @@ def process_bulletin(
                 LOG.warning("Previsão indisponível para %s: %s", municipality["nome"], exc)
                 counts["unavailable"] += 1
                 continue
-            except Exception as exc:
+            except Exception:
                 LOG.exception("Falha ao preparar previsão de %s", municipality["nome"])
                 counts["failed"] += 1
                 continue

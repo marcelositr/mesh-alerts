@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mesh-alerts"
 version = "0.1.0"
-description = "Identifica alertas CAP que cruzam municípios configurados e prepara mensagens para Meshtastic."
+description = "Valida alertas CAP por município e prepara boletins de previsão do INMET para Meshtastic."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }

@@ -47,6 +47,36 @@ class ConfigurationTests(unittest.TestCase):
             with self.assertRaisesRegex(ConfigError, ">= 10"):
                 load_config(path)
 
+    def test_invalid_inmet_timezone_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.yaml"
+            path.write_text(
+                yaml.safe_dump({"inmet": {"fuso_horario": "Mars/Phobos"}}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ConfigError, "Fuso horário inválido"):
+                load_config(path)
+
+    def test_invalid_inmet_schedule_period_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.yaml"
+            path.write_text(
+                yaml.safe_dump({"inmet": {"horarios": {"06:00": "madrugada"}}}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ConfigError, "Período inválido"):
+                load_config(path)
+
+    def test_invalid_inmet_timeout_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.yaml"
+            path.write_text(
+                yaml.safe_dump({"inmet": {"timeout_segundos": 0}}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ConfigError, "inmet.timeout_segundos"):
+                load_config(path)
+
     def test_unknown_section_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.yaml"

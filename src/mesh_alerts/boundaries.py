@@ -8,6 +8,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
+
+from .http_utils import open_http_url
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -36,7 +38,7 @@ def download_with_retries(
     last_error = None
     for attempt in range(1, attempts + 1):
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with open_http_url(request, timeout=timeout) as response:
                 return response.read()
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last_error = exc

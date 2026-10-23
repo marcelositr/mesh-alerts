@@ -35,11 +35,13 @@ O workflow [`tests.yml`](../.github/workflows/tests.yml) instala o pacote, compi
 
 O workflow [`live-cap-validation.yml`](../.github/workflows/live-cap-validation.yml) valida o feed CAP atual usando o GeoJSON municipal versionado em [`tests/fixtures/`](../tests/fixtures/). A consulta de disponibilidade ao vivo do IBGE é um job separado, executado por agendamento ou disparo manual, e seus erros são avisos. A validação com fixture e a sondagem ao vivo respondem a perguntas diferentes.
 
-O workflow [`security.yml`](../.github/workflows/security.yml) executa verificações estáticas de Python com Ruff e Bandit e audita dependências instaladas com pip-audit. Os resultados devem ser avaliados antes de tornar seus checks obrigatórios para a branch principal.
+O workflow [`security.yml`](../.github/workflows/security.yml) executa Ruff, Bandit e pip-audit, valida sintaxe e expressões dos workflows com actionlint, audita riscos de GitHub Actions com zizmor e verifica segredos no histórico com Gitleaks. O actionlint é baixado com verificação de SHA-256; as referências de Actions são fixadas em revisões imutáveis. O zizmor bloqueia achados de alta severidade, enquanto os resultados de menor severidade precisam ser avaliados separadamente.
+
+Esses checks devem ser confirmados como obrigatórios nas regras da branch principal quando o plano e a visibilidade do repositório permitirem essa configuração.
 
 ## Releases e dependências
 
-O workflow [`release.yml`](../.github/workflows/release.yml) é acionado por tags cujo nome começa com `v`. Ele executa testes em Python 3.10 a 3.13 e as verificações Ruff, Bandit e pip-audit antes de construir wheel e distribuição de fontes com a versão derivada da tag e anexar os artefatos a uma GitHub Release. Tags contendo `alpha`, `beta` ou `rc`, sem diferenciar maiúsculas de minúsculas, geram releases marcadas como pré-lançamento. Esse fluxo publica na GitHub Release, não no PyPI.
+O workflow [`release.yml`](../.github/workflows/release.yml) é acionado por tags cujo nome começa com `v`. Na própria revisão apontada pela tag, ele executa testes em Python 3.10 a 3.13, Ruff, Bandit, pip-audit, actionlint, zizmor e Gitleaks. A publicação só começa quando os testes e a auditoria de segurança passam. Depois, constrói wheel e distribuição de fontes com a versão derivada da tag e anexa os artefatos a uma GitHub Release. Tags contendo `alpha`, `beta` ou `rc`, sem diferenciar maiúsculas de minúsculas, geram releases marcadas como pré-lançamento. Esse fluxo publica na GitHub Release, não no PyPI.
 
 O arquivo [`dependabot.yml`](../.github/dependabot.yml) agenda atualizações semanais para dependências Python e GitHub Actions. Os PRs gerados pelo Dependabot ainda devem passar pelos mesmos checks de CI.
 

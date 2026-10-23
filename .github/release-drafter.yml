@@ -1,0 +1,40 @@
+name-template: "v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
+categories:
+  - title: "🚨 Alertas e funcionalidades"
+    labels:
+      - "feature"
+      - "enhancement"
+  - title: "🐛 Correções"
+    labels:
+      - "bug"
+      - "fix"
+  - title: "🔐 Segurança e dependências"
+    labels:
+      - "security"
+      - "dependencies"
+  - title: "📚 Documentação"
+    labels:
+      - "documentation"
+change-template: "- $TITLE (#$NUMBER) @$AUTHOR"
+change-title-escapes: "\\<*_&"
+version-resolver:
+  major:
+    labels:
+      - "major"
+  minor:
+    labels:
+      - "minor"
+      - "feature"
+      - "enhancement"
+  patch:
+    labels:
+      - "patch"
+      - "bug"
+      - "fix"
+      - "dependencies"
+  default: patch
+template: |
+  ## Alterações
+
+  $CHANGES

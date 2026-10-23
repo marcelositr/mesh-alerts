@@ -29,6 +29,23 @@ jobs:
         run: python -m pip install -e .
       - name: Validate current CAP feed against IBGE reference boundaries
         run: python -m mesh_alerts.region --boundaries tests/fixtures/ibge-sp-municipios-api.geojson
+
+  ibge-live-probe:
+    # Keep the external IBGE probe off every push. Run it only on a schedule
+    # or when explicitly requested, so rapid development pushes do not hammer
+    # the endpoint or make the normal validation depend on runner networking.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -e .
       - name: Probe live IBGE API availability (warning only)
         run: |
           python - <<'PY'
@@ -40,8 +57,8 @@ jobs:
               carregar_limites(
                   municipality_map(config),
                   config["fontes"]["malhas_ibge"],
-                  timeout=8,
-                  tentativas=1,
+                  timeout=20,
+                  tentativas=2,
               )
           except Exception as exc:
               print(f"::warning::IBGE live probe failed: {exc}")

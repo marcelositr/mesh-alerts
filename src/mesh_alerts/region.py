@@ -93,7 +93,7 @@ def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
     return ET.fromstring(data)
 
 
-def carregar_limites(municipios, base_url, timeout=12, tentativas=2):
+def carregar_limites(municipios, base_url, timeout=12, tentativas=2, cache_path=None):
     base_url = base_url.rstrip("/")
     features = []
 
@@ -156,9 +156,40 @@ def carregar_limites(municipios, base_url, timeout=12, tentativas=2):
             else:
                 raise RuntimeError(f"Resposta do IBGE não é GeoJSON para {nome}")
 
-    return limites_municipais_do_geojson(
-        {"type": "FeatureCollection", "features": features}, municipios
-    )
+    geojson = {"type": "FeatureCollection", "features": features}
+    boundaries = limites_municipais_do_geojson(geojson, municipios)
+
+    if cache_path is not None:
+        selected_features = []
+        for feature in features:
+            if not isinstance(feature, dict):
+                continue
+            properties = feature.get("properties") or {}
+            if not isinstance(properties, dict):
+                continue
+            code = str(
+                properties.get("codarea", properties.get("CD_MUN", properties.get("id", "")))
+            )
+            if code in municipios:
+                selected_features.append(feature)
+        cache_geojson = {"type": "FeatureCollection", "features": selected_features}
+        cache_file = Path(cache_path)
+        try:
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            temporary_file = cache_file.with_suffix(cache_file.suffix + ".tmp")
+            temporary_file.write_text(
+                json.dumps(cache_geojson, ensure_ascii=False, separators=(",", ":")),
+                encoding="utf-8",
+            )
+            temporary_file.replace(cache_file)
+        except OSError as exc:
+            print(
+                f"Aviso: não foi possível atualizar o cache da malha municipal "
+                f"{cache_file}: {exc}",
+                file=sys.stderr,
+            )
+
+    return boundaries
 
 
 def carregar_limites_de_arquivo(caminho, municipios):
@@ -167,6 +198,32 @@ def carregar_limites_de_arquivo(caminho, municipios):
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"não foi possível ler a malha municipal local {caminho}: {exc}") from exc
     return limites_municipais_do_geojson(geojson, municipios)
+
+
+def carregar_limites_com_cache(
+    municipios, base_url, cache_path, timeout=12, tentativas=2
+):
+    """Load current IBGE boundaries, falling back to a previously validated local cache."""
+    try:
+        return carregar_limites(
+            municipios,
+            base_url,
+            timeout=timeout,
+            tentativas=tentativas,
+            cache_path=cache_path,
+        ), False
+    except Exception as live_error:
+        cache_file = Path(cache_path)
+        if not cache_file.is_file():
+            raise
+        try:
+            boundaries = carregar_limites_de_arquivo(cache_file, municipios)
+        except Exception as cache_error:
+            raise RuntimeError(
+                f"IBGE indisponível ({live_error}) e cache municipal inválido "
+                f"({cache_file}: {cache_error})"
+            ) from live_error
+        return boundaries, True
 
 
 def avisos_poligonos_invalidos(alert, now=None):

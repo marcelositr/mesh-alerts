@@ -97,6 +97,8 @@ mesh-alerts-service
 
 O banco e o diretório de saída são configurados em `config.yaml`; variáveis de ambiente podem sobrescrever esses valores. Para implantação com systemd, use caminhos absolutos graváveis pelo usuário de serviço, como `/var/lib/mesh-alerts/alerts.sqlite3` e `/var/lib/mesh-alerts/output`.
 
+Após uma consulta bem-sucedida ao IBGE, o serviço grava um cache GeoJSON validado junto ao banco. Se a API ficar indisponível, o serviço pode continuar usando esse cache por até 365 dias, desde que ele contenha todos os municípios configurados e geometrias válidas. O primeiro carregamento ainda exige acesso ao IBGE ou um cache previamente preparado. O serviço registra um aviso quando recorre ao cache; ele não aceita automaticamente caches mais antigos.
+
 A fila persistente evita enfileiramentos duplicados e não repete automaticamente uma transmissão cujo resultado ficou incerto. Isso reduz duplicações, mas não garante entrega exatamente uma vez. Confirme manualmente qualquer item marcado como incerto antes de decidir se deve ser reenviado.
 
 ## Boletins de previsão INMET

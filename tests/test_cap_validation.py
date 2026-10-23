@@ -140,7 +140,7 @@ class CapValidationTests(unittest.TestCase):
             "mesh_alerts.region.carregar_limites",
             side_effect=RuntimeError("IBGE timeout"),
         ):
-            boundaries, used_cache = load_municipal_boundaries_with_cache(
+            boundaries, used_cache, cache_reason = load_municipal_boundaries_with_cache(
                 municipalities,
                 "https://servicodados.ibge.gov.br/api/v3/malhas/municipios",
                 fixture,
@@ -149,6 +149,7 @@ class CapValidationTests(unittest.TestCase):
             )
 
         self.assertTrue(used_cache)
+        self.assertIn("IBGE timeout", cache_reason)
         self.assertEqual(set(boundaries), set(municipalities))
         self.assertTrue(all(boundary.is_valid for boundary in boundaries.values()))
 

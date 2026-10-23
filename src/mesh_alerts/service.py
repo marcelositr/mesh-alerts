@@ -19,7 +19,7 @@ from .cap import (
 )
 from .config import ConfigError, load_config, municipality_map
 from .state import AlertStateStore
-from .region import carregar_feed, carregar_limites
+from .region import carregar_feed, carregar_limites_com_cache
 
 
 LOG = logging.getLogger("mesh-alerts")
@@ -239,11 +239,19 @@ def main(argv=None) -> int:
             now = datetime.now(timezone.utc)
             try:
                 if boundaries is None:
-                    boundaries = carregar_limites(
-                        municipalities, sources["malhas_ibge"],
+                    boundary_cache = Path(database).parent / "ibge-municipal-boundaries.geojson"
+                    boundaries, used_cache = carregar_limites_com_cache(
+                        municipalities,
+                        sources["malhas_ibge"],
+                        boundary_cache,
                         timeout=service["timeout_http_segundos"],
                         tentativas=service["tentativas_malha_ibge"],
                     )
+                    if used_cache:
+                        LOG.warning(
+                            "API do IBGE indisponível; usando cache municipal validado em %s",
+                            boundary_cache,
+                        )
                 root = carregar_feed(
                     None, sources["feed_cap"], service["timeout_http_segundos"],
                     service["tentativas_feed"],

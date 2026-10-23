@@ -16,5 +16,5 @@ def validate_http_url(url: str) -> None:
 def open_http_url(request: Request, *, timeout: float):
     """Open a request after validating its URL scheme and host."""
     validate_http_url(request.full_url)
-    # nosec B310: the URL scheme and host are explicitly validated above.
+    # nosec B310
     return urlopen(request, timeout=timeout)

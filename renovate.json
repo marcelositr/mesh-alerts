@@ -1,1 +1,17 @@
-<escape>{"$schema":"https://docs.renovatebot.com/renovate-schema.json","extends":["config:recommended"],"enabledManagers":["pep621","pip_requirements"],"timezone":"America/Sao_Paulo","schedule":["before 10am on Monday"],"dependencyDashboard":true,"prConcurrentLimit":5,"automerge":false,"labels":["dependencies"],"packageRules":[{"matchManagers":["pep621","pip_requirements"],"groupName":"Python dependencies"}]}</escape>
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["pep621", "pip_requirements"],
+  "timezone": "America/Sao_Paulo",
+  "schedule": ["before 10am on Monday"],
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 5,
+  "automerge": false,
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "matchManagers": ["pep621", "pip_requirements"],
+      "groupName": "Python dependencies"
+    }
+  ]
+}

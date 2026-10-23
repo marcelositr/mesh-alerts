@@ -11,6 +11,7 @@ from shapely.geometry import box
 from mesh_alerts.region import (
     carregar_feed as load_cap_feed,
     carregar_limites as load_municipal_boundaries,
+    carregar_limites_com_cache as load_municipal_boundaries_with_cache,
     carregar_limites_de_arquivo as load_municipal_boundaries_from_file,
     avisos_metadados_geograficos as diagnose_geographic_metadata,
     avisos_poligonos_invalidos as diagnose_invalid_polygons,
@@ -122,6 +123,25 @@ class CapValidationTests(unittest.TestCase):
         self.assertIn("/malhas/estados/35?", request.full_url)
         self.assertIn("intrarregiao=municipio", request.full_url)
         self.assertIn("formato=application/vnd.geo+json", request.full_url)
+
+    def test_validated_boundary_cache_is_used_when_ibge_is_unavailable(self):
+        fixture = Path(__file__).parent / "fixtures" / "ibge-sp-municipios-api.geojson"
+        municipalities = {code: f"Municipality {code}" for code in MUNICIPALITIES}
+        with patch(
+            "mesh_alerts.region.carregar_limites",
+            side_effect=RuntimeError("IBGE timeout"),
+        ):
+            boundaries, used_cache = load_municipal_boundaries_with_cache(
+                municipalities,
+                "https://servicodados.ibge.gov.br/api/v3/malhas/municipios",
+                fixture,
+                timeout=1,
+                tentativas=1,
+            )
+
+        self.assertTrue(used_cache)
+        self.assertEqual(set(boundaries), set(municipalities))
+        self.assertTrue(all(boundary.is_valid for boundary in boundaries.values()))
 
     def test_local_ibge_boundary_fixture_loads_without_network_access(self):
         fixture = Path(__file__).parent / "fixtures" / "ibge-sp-municipios-api.geojson"

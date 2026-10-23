@@ -1,5 +1,7 @@
 import json
+import os
 import tempfile
+import time
 import unittest
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -149,6 +151,27 @@ class CapValidationTests(unittest.TestCase):
         self.assertTrue(used_cache)
         self.assertEqual(set(boundaries), set(municipalities))
         self.assertTrue(all(boundary.is_valid for boundary in boundaries.values()))
+
+    def test_expired_boundary_cache_is_rejected_when_ibge_is_unavailable(self):
+        fixture = Path(__file__).parent / "fixtures" / "ibge-sp-municipios-api.geojson"
+        municipalities = {code: f"Municipality {code}" for code in MUNICIPALITIES}
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "ibge-boundaries.geojson"
+            cache_path.write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+            expired_timestamp = time.time() - 400 * 24 * 60 * 60
+            os.utime(cache_path, (expired_timestamp, expired_timestamp))
+            with patch(
+                "mesh_alerts.region.carregar_limites",
+                side_effect=RuntimeError("IBGE timeout"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "idade máxima de 365 dias"):
+                    load_municipal_boundaries_with_cache(
+                        municipalities,
+                        "https://servicodados.ibge.gov.br/api/v3/malhas/municipios",
+                        cache_path,
+                        timeout=1,
+                        tentativas=1,
+                    )
 
     def test_local_ibge_boundary_fixture_loads_without_network_access(self):
         fixture = Path(__file__).parent / "fixtures" / "ibge-sp-municipios-api.geojson"

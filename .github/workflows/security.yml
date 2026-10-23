@@ -32,4 +32,4 @@ jobs:
       - name: Scan Python source with Bandit
         run: bandit -r src -ll
       - name: Audit installed dependencies
-        run: pip-audit
+        run: pip-audit -r requirements.txt

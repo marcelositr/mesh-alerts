@@ -187,7 +187,7 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
     valid_periods = {"manha", "tarde", "noite"}
     for scheduled_time, period in schedule.items():
         if not isinstance(scheduled_time, str) or not re.fullmatch(
-            r"(?:[01]\\d|2[0-3]):[0-5]\\d", scheduled_time
+            r"(?:[01]\d|2[0-3]):[0-5]\d", scheduled_time
         ):
             raise ConfigError(
                 f"Horário inválido em 'inmet.horarios': {scheduled_time!r}; use HH:MM."

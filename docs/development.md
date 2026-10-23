@@ -39,7 +39,7 @@ O workflow [`security.yml`](../.github/workflows/security.yml) executa verifica�
 
 ## Releases e dependências
 
-O workflow [`release.yml`](../.github/workflows/release.yml) é acionado por tags cujo nome começa com `v`. Ele executa testes em Python 3.10 a 3.13, constrói wheel e distribuição de fontes com a versão derivada da tag e anexa os artefatos a uma GitHub Release. Tags contendo `alpha`, `beta` ou `rc`, sem diferenciar maiúsculas de minúsculas, geram releases marcadas como pré-lançamento. Esse fluxo publica na GitHub Release, não no PyPI.
+O workflow [`release.yml`](../.github/workflows/release.yml) é acionado por tags cujo nome começa com `v`. Ele executa testes em Python 3.10 a 3.13 e as verificações Ruff, Bandit e pip-audit antes de construir wheel e distribuição de fontes com a versão derivada da tag e anexar os artefatos a uma GitHub Release. Tags contendo `alpha`, `beta` ou `rc`, sem diferenciar maiúsculas de minúsculas, geram releases marcadas como pré-lançamento. Esse fluxo publica na GitHub Release, não no PyPI.
 
 O arquivo [`dependabot.yml`](../.github/dependabot.yml) agenda atualizações semanais para dependências Python e GitHub Actions. Os PRs gerados pelo Dependabot ainda devem passar pelos mesmos checks de CI.
 

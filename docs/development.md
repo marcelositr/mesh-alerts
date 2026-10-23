@@ -35,6 +35,14 @@ O workflow [`tests.yml`](../.github/workflows/tests.yml) instala o pacote, compi
 
 O workflow [`live-cap-validation.yml`](../.github/workflows/live-cap-validation.yml) valida o feed CAP atual usando o GeoJSON municipal versionado em [`tests/fixtures/`](../tests/fixtures/). A consulta de disponibilidade ao vivo do IBGE é um job separado, executado por agendamento ou disparo manual, e seus erros são avisos. A validação com fixture e a sondagem ao vivo respondem a perguntas diferentes.
 
+O workflow [`security.yml`](../.github/workflows/security.yml) executa verificações estáticas de Python com Ruff e Bandit e audita dependências instaladas com pip-audit. Os resultados devem ser avaliados antes de tornar seus checks obrigatórios para a branch principal.
+
+## Releases e dependências
+
+O workflow [`release.yml`](../.github/workflows/release.yml) é acionado por tags cujo nome começa com `v`. Ele executa testes em Python 3.10 a 3.13, constrói wheel e distribuição de fontes com a versão derivada da tag e anexa os artefatos a uma GitHub Release. Tags contendo `alpha`, `beta` ou `rc`, sem diferenciar maiúsculas de minúsculas, geram releases marcadas como pré-lançamento. Esse fluxo publica na GitHub Release, não no PyPI.
+
+O arquivo [`dependabot.yml`](../.github/dependabot.yml) agenda atualizações semanais para dependências Python e GitHub Actions. Os PRs gerados pelo Dependabot ainda devem passar pelos mesmos checks de CI.
+
 ## Pontos de entrada
 
 Os comandos instalados são definidos em [`pyproject.toml`](../pyproject.toml):

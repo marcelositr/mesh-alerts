@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import urllib.request
+
+from .http_utils import open_http_url, validate_http_url
 from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -40,6 +42,7 @@ def fetch_forecast(ibge_code: str, config: dict[str, Any] | None = None) -> dict
     base_url = str(inmet.get("previsao_url", "")).rstrip("/")
     if not base_url:
         raise ValueError("inmet.previsao_url não foi configurada.")
+    validate_http_url(base_url)
     url = f"{base_url}/{ibge_code}"
     request = urllib.request.Request(
         url,
@@ -49,7 +52,7 @@ def fetch_forecast(ibge_code: str, config: dict[str, Any] | None = None) -> dict
         },
     )
     timeout = int(inmet.get("timeout_segundos", 30))
-    with urllib.request.urlopen(request, timeout=timeout) as resposta:
+    with open_http_url(request, timeout=timeout) as resposta:
         data = json.loads(resposta.read().decode("utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"Resposta inesperada do INMET para o código IBGE {ibge_code}.")

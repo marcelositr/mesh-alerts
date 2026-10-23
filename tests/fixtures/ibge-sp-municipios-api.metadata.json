@@ -1,0 +1,18 @@
+{
+  "source": "https://servicodados.ibge.gov.br/api/v3/malhas/estados/35?intrarregiao=municipio&formato=application/vnd.geo+json&qualidade=minima",
+  "provider": "IBGE",
+  "retrieved_at_utc": "2026-10-22T18:09:03.323844+00:00",
+  "http_status": 200,
+  "municipalities": {
+    "3503000": "Aramina",
+    "3508207": "Buritizal",
+    "3517703": "Guará",
+    "3520103": "Igarapava",
+    "3524105": "Ituverava",
+    "3529708": "Miguelópolis"
+  },
+  "edition": null,
+  "edition_note": "A API consultada não identifica uma edição fixa na URL.",
+  "fixture": "ibge-sp-municipios-api.geojson",
+  "fixture_sha256": "5ede34b01d01bb58423c6907655dd143d62f6fbac0e0d0bdedc9621fae1a4307"
+}

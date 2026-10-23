@@ -1,0 +1,9 @@
+# Ambiente local Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Estado persistente local do agendador
+data/

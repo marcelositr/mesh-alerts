@@ -10,7 +10,7 @@ O projeto reúne três ferramentas: validação regional de alertas CAP, serviç
 - Acesso à internet para consultar as fontes oficiais.
 - Para transmissão, um dispositivo Meshtastic acessível por TCP.
 
-As dependências Python são instaladas pelo pacote: Shapely, Meshtastic e PyYAML.
+As dependências Python são instaladas pelo pacote: Shapely, Meshtastic, PyYAML e defusedxml.
 
 ## Instalação
 

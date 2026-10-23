@@ -102,11 +102,8 @@ def carregar_limites(municipios, base_url, timeout=12, tentativas=2):
     )
     if state_base_url:
         features = []
-        states = {}
-        for code, name in municipios.items():
-            states.setdefault(code[:2], {})[code] = name
-
-        for state_code, state_municipalities in states.items():
+        state_codes = sorted({code[:2] for code in municipios})
+        for state_code in state_codes:
             query = (
                 "intrarregiao=municipio"
                 "&formato=application/vnd.geo+json"

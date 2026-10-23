@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mesh-alerts"
+version = "0.1.0"
+description = "Identifica alertas CAP que cruzam municípios configurados e prepara mensagens para Meshtastic."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = [
+  "shapely>=2.0,<3.0",
+  "meshtastic>=2.7.11,<3.0",
+  "PyYAML>=6.0,<7.0",
+]
+
+[project.scripts]
+mesh-alerts-service = "mesh_alerts.service:main"
+mesh-alerts-validate = "mesh_alerts.region:main"
+mesh-alerts-inmet = "mesh_alerts.inmet_cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

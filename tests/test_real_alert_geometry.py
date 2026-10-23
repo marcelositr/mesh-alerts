@@ -5,8 +5,8 @@ import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from mesh_alerts_boundaries import MUNICIPALITIES, load_municipal_boundaries_from_geojson
-from mesh_alerts_cap import XML_NAMESPACES, find_intersecting_municipalities
+from mesh_alerts.boundaries import MUNICIPALITIES, load_municipal_boundaries_from_geojson
+from mesh_alerts.cap import XML_NAMESPACES, find_intersecting_municipalities
 
 FIXTURES = Path(__file__).parent / "fixtures"
 GEOJSON = FIXTURES / "ibge-sp-municipios-api.geojson"

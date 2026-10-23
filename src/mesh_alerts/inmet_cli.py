@@ -8,8 +8,8 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from mesh_alerts_config import load_configuration
-from mesh_alerts_inmet_scheduler import process_bulletin, get_due_schedule_slot
+from .inmet_config import load_configuration
+from .inmet_scheduler import process_bulletin, get_due_schedule_slot
 
 
 def _transport_tcp(host: str, port: int, channel: int, destination: str):

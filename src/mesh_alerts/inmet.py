@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from mesh_alerts_config import load_configuration
+from .inmet_config import load_configuration
 
 PERIOD_LABELS = {"manha": "MANHÃ", "tarde": "TARDE", "noite": "NOITE"}
 USER_AGENT = "mesh-alerts/0.1"

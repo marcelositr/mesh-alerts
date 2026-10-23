@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
-from mesh_alerts_inmet import (
+from .inmet import (
     ForecastUnavailableError,
     get_local_date,
     build_municipal_bulletin,

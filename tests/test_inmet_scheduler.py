@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from mesh_alerts_inmet import ForecastUnavailableError
-from mesh_alerts_inmet_scheduler import (
+from mesh_alerts.inmet import ForecastUnavailableError
+from mesh_alerts.inmet_scheduler import (
     process_bulletin,
     get_due_schedule_slot,
     get_due_period,

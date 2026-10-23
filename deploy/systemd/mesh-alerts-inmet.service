@@ -9,7 +9,7 @@ User=mesh-alerts
 Group=mesh-alerts
 WorkingDirectory=/opt/mesh-alerts
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/mesh-alerts/.venv/bin/python /opt/mesh-alerts/executar_boletins_inmet.py --loop --database /var/lib/mesh-alerts/inmet-bulletins.sqlite3
+ExecStart=/opt/mesh-alerts/.venv/bin/mesh-alerts-inmet --loop --database /var/lib/mesh-alerts/inmet-bulletins.sqlite3
 Restart=on-failure
 RestartSec=10s
 StateDirectory=mesh-alerts

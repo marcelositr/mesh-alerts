@@ -5,8 +5,8 @@ from pathlib import Path
 
 import yaml
 
-from mesh_alerts_config import load_configuration
-from mesh_alerts_inmet import (
+from mesh_alerts.inmet_config import load_configuration
+from mesh_alerts.inmet import (
     ForecastUnavailableError,
     get_local_date,
     format_bulletin_message,

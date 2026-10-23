@@ -256,3 +256,14 @@ def find_intersecting_municipalities(
                     if geometry.intersects(boundary):
                         cities.add(municipality_names[code])
     return cities, expired_count, circle_count
+
+
+NS = XML_NAMESPACES
+parse_cap_datetime = parse_cap_timestamp
+info_is_current = is_info_current
+polygon_from_cap = parse_cap_polygon
+circle_from_cap = parse_cap_circle
+references_to_keys = parse_reference_keys
+alert_key = get_alert_key
+active_alert_entries = get_active_alert_entries
+intersecting_municipalities = find_intersecting_municipalities

@@ -16,7 +16,7 @@ from testar_alertas_regiao_ituverava import (
 
 from mesh_alerts_boundaries import load_municipal_boundaries_from_geojson
 
-from mesh_alerts_cap import (
+from mesh_alerts.cap import (
     get_active_alert_entries,
     parse_cap_circle,
     is_info_current,

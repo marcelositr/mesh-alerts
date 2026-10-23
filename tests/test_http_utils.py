@@ -1,6 +1,4 @@
 import unittest
-from urllib.request import Request
-
 from mesh_alerts.http_utils import validate_http_url
 
 

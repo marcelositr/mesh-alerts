@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import urllib.request
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 
 def validate_http_url(url: str) -> None:
@@ -17,4 +18,4 @@ def open_http_url(request: Request, *, timeout: float):
     """Open a request after validating its URL scheme and host."""
     validate_http_url(request.full_url)
     # nosec B310
-    return urlopen(request, timeout=timeout)
+    return urllib.request.urlopen(request, timeout=timeout)

@@ -11,7 +11,10 @@ WorkingDirectory=/opt/mesh-alerts
 EnvironmentFile=/etc/mesh-alerts/mesh-alerts.env
 ExecStart=/opt/mesh-alerts/.venv/bin/python -m mesh_alerts.service
 Restart=on-failure
-RestartSec=10
+RestartSec=10s
+TimeoutStopSec=30s
+KillSignal=SIGINT
+Environment=PYTHONUNBUFFERED=1
 StateDirectory=mesh-alerts
 UMask=0077
 NoNewPrivileges=true

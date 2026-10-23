@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
@@ -151,6 +152,50 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
         if not value.startswith("https://"):
             raise ConfigError(f"'fontes.{key}' deve usar HTTPS.")
         sources[key] = value
+
+    inmet = config["inmet"]
+    if not isinstance(inmet, dict):
+        raise ConfigError("'inmet' deve ser uma seção de configuração.")
+
+    forecast_url = _required_text(inmet.get("previsao_url"), "inmet.previsao_url")
+    if not forecast_url.startswith("https://"):
+        raise ConfigError("'inmet.previsao_url' deve usar HTTPS.")
+    inmet["previsao_url"] = forecast_url
+
+    timezone_name = _required_text(inmet.get("fuso_horario"), "inmet.fuso_horario")
+    try:
+        ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise ConfigError(f"Fuso horário inválido em 'inmet.fuso_horario': {timezone_name}") from exc
+    inmet["fuso_horario"] = timezone_name
+
+    inmet["timeout_segundos"] = _positive_int(
+        inmet.get("timeout_segundos"), "inmet.timeout_segundos"
+    )
+    for key in (
+        "janela_recuperacao_minutos",
+        "intervalo_entre_mensagens_segundos",
+        "intervalo_entre_municipios_segundos",
+    ):
+        inmet[key] = _positive_int(
+            inmet.get(key), f"inmet.{key}", minimum=0
+        )
+
+    schedule = inmet.get("horarios")
+    if not isinstance(schedule, dict) or not schedule:
+        raise ConfigError("'inmet.horarios' deve conter ao menos um horário.")
+    valid_periods = {"manha", "tarde", "noite"}
+    for scheduled_time, period in schedule.items():
+        if not isinstance(scheduled_time, str) or not re.fullmatch(
+            r"(?:[01]\\d|2[0-3]):[0-5]\\d", scheduled_time
+        ):
+            raise ConfigError(
+                f"Horário inválido em 'inmet.horarios': {scheduled_time!r}; use HH:MM."
+            )
+        if period not in valid_periods:
+            raise ConfigError(
+                f"Período inválido em 'inmet.horarios' para {scheduled_time}: {period!r}."
+            )
 
     return config
 

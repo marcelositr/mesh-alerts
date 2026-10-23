@@ -8,24 +8,25 @@ from pathlib import Path
 from shapely.geometry import box
 
 from testar_alertas_regiao_ituverava import (
-    MUNICIPIOS,
-    carregar_feed,
-    limites_municipais_do_geojson,
-    avisos_metadados_geograficos,
-    avisos_poligonos_invalidos,
+    MUNICIPALITIES,
+    load_cap_feed,
+    diagnose_geographic_metadata,
+    diagnose_invalid_polygons,
 )
+
+from mesh_alerts_boundaries import load_municipal_boundaries_from_geojson
 
 from mesh_alerts_cap import (
-    active_alert_entries,
-    circle_from_cap,
-    info_is_current,
-    intersecting_municipalities,
-    parse_cap_datetime,
-    polygon_from_cap,
-    references_to_keys,
+    get_active_alert_entries,
+    parse_cap_circle,
+    is_info_current,
+    find_intersecting_municipalities,
+    parse_cap_timestamp,
+    parse_cap_polygon,
+    parse_reference_keys,
 )
 
-NS = {"c": "urn:oasis:names:tc:emergency:cap:1.2"}
+XML_NAMESPACES = {"c": "urn:oasis:names:tc:emergency:cap:1.2"}
 
 
 class CapValidationTests(unittest.TestCase):
@@ -34,14 +35,14 @@ class CapValidationTests(unittest.TestCase):
 
     def info(self, fields):
         parts = "".join(f"<c:{key}>{value}</c:{key}>" for key, value in fields.items())
-        return ET.fromstring(f'<c:info xmlns:c="{NS["c"]}">{parts}</c:info>')
+        return ET.fromstring(f'<c:info xmlns:c="{XML_NAMESPACES["c"]}">{parts}</c:info>')
 
     def test_local_cap_feed_file_is_parsed(self):
         xml = '<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sample.xml"
             path.write_text(xml, encoding="utf-8")
-            root = carregar_feed(path)
+            root = load_cap_feed(path)
         self.assertEqual(root.tag, "{http://www.w3.org/2005/Atom}feed")
 
     def test_warns_when_cap_polygon_is_invalid_before_repair(self):
@@ -50,7 +51,7 @@ class CapValidationTests(unittest.TestCase):
             '<c:polygon>-20,-47 -20.1,-47.1 -20,-47.1 -20.1,-47 -20,-47</c:polygon>'
             '</c:area></c:info></c:alert>'
         )
-        warnings = avisos_poligonos_invalidos(alert)
+        warnings = diagnose_invalid_polygons(alert)
         self.assertEqual(len(warnings), 1)
         self.assertIn("polígono CAP #1 inválido", warnings[0])
         self.assertIn("reparada", warnings[0])
@@ -64,7 +65,7 @@ class CapValidationTests(unittest.TestCase):
             '<c:geocode><c:valueName>IBGE</c:valueName><c:value>3170107</c:value></c:geocode>'
             '</c:area></c:info></c:alert>'
         )
-        warnings = avisos_metadados_geograficos(alert)
+        warnings = diagnose_geographic_metadata(alert)
         self.assertEqual(len(warnings), 1)
         self.assertIn("MINAS GERAIS/MG", warnings[0])
         self.assertIn("3145000", warnings[0])
@@ -78,14 +79,14 @@ class CapValidationTests(unittest.TestCase):
             '<c:geocode><c:valueName>IBGE</c:valueName><c:value>3503000</c:value></c:geocode>'
             '</c:area></c:info></c:alert>'
         )
-        self.assertEqual(avisos_metadados_geograficos(alert), [])
+        self.assertEqual(diagnose_geographic_metadata(alert), [])
 
 
     def test_ibge_reference_fixture_contains_exact_six_municipalities(self):
         fixture = Path(__file__).parent / "fixtures" / "ibge-sp-municipios-api.geojson"
         geojson = json.loads(fixture.read_text(encoding="utf-8"))
-        boundaries = limites_municipais_do_geojson(geojson)
-        self.assertEqual(set(boundaries), set(MUNICIPIOS))
+        boundaries = load_municipal_boundaries_from_geojson(geojson)
+        self.assertEqual(set(boundaries), set(MUNICIPALITIES))
         self.assertEqual(
             sum(1 for feature in geojson["features"]
                 if str((feature.get("properties") or {}).get("codarea")) == "3503000"),
@@ -110,16 +111,16 @@ class CapValidationTests(unittest.TestCase):
                     "properties": {"codarea": code},
                     "geometry": geometry,
                 }
-                for code in MUNICIPIOS
+                for code in MUNICIPALITIES
             ],
         }
-        boundaries = limites_municipais_do_geojson(geojson)
-        self.assertEqual(set(boundaries), set(MUNICIPIOS))
+        boundaries = load_municipal_boundaries_from_geojson(geojson)
+        self.assertEqual(set(boundaries), set(MUNICIPALITIES))
         self.assertTrue(all(boundary.is_valid for boundary in boundaries.values()))
 
     def test_ibge_geojson_rejects_non_feature_collection(self):
         with self.assertRaisesRegex(RuntimeError, "FeatureCollection"):
-            limites_municipais_do_geojson({"type": "Feature", "features": []})
+            load_municipal_boundaries_from_geojson({"type": "Feature", "features": []})
 
     def test_ibge_geojson_rejects_malformed_target_geometry(self):
         geojson = {
@@ -131,12 +132,12 @@ class CapValidationTests(unittest.TestCase):
             }],
         }
         with self.assertRaisesRegex(RuntimeError, "Geometria inválida"):
-            limites_municipais_do_geojson(geojson)
+            load_municipal_boundaries_from_geojson(geojson)
 
     def test_ibge_geojson_rejects_incomplete_municipality_set(self):
         geojson = {"type": "FeatureCollection", "features": []}
         with self.assertRaisesRegex(RuntimeError, "Malha municipal incompleta"):
-            limites_municipais_do_geojson(geojson)
+            load_municipal_boundaries_from_geojson(geojson)
 
     def test_ibge_geojson_rejects_invalid_target_geometry(self):
         geojson = {
@@ -148,15 +149,15 @@ class CapValidationTests(unittest.TestCase):
             }],
         }
         with self.assertRaisesRegex(RuntimeError, "Geometria ausente"):
-            limites_municipais_do_geojson(geojson)
+            load_municipal_boundaries_from_geojson(geojson)
 
     def test_parse_cap_timestamp_normalizes_utc(self):
-        parsed = parse_cap_datetime("2026-10-22T15:00:00-03:00")
+        parsed = parse_cap_timestamp("2026-10-22T15:00:00-03:00")
         self.assertEqual(parsed, datetime(2026, 10, 22, 18, 0, tzinfo=timezone.utc))
 
     def test_expired_info_is_not_current(self):
         info = self.info({"expires": "2026-10-22T17:59:59Z"})
-        self.assertEqual(info_is_current(info, self.now), (False, "expires expirado"))
+        self.assertEqual(is_info_current(info, self.now), (False, "expires expirado"))
 
     def test_future_onset_does_not_deactivate_current_warning(self):
         info = self.info({
@@ -164,45 +165,45 @@ class CapValidationTests(unittest.TestCase):
             "onset": "2026-10-22T18:01:00Z",
             "expires": "2026-10-22T19:00:00Z",
         })
-        self.assertEqual(info_is_current(info, self.now), (True, None))
+        self.assertEqual(is_info_current(info, self.now), (True, None))
 
     def test_future_effective_is_not_current(self):
         info = self.info({"effective": "2026-10-22T18:01:00Z"})
-        self.assertEqual(info_is_current(info, self.now), (False, "effective futuro"))
+        self.assertEqual(is_info_current(info, self.now), (False, "effective futuro"))
 
     def test_malformed_onset_fails_closed(self):
         info = self.info({"onset": "not-a-time"})
-        self.assertEqual(info_is_current(info, self.now), (False, "timestamp onset inválido"))
+        self.assertEqual(is_info_current(info, self.now), (False, "timestamp onset inválido"))
 
     def test_malformed_expiry_fails_closed(self):
         info = self.info({"expires": "not-a-time"})
-        self.assertEqual(info_is_current(info, self.now), (False, "timestamp expires inválido"))
+        self.assertEqual(is_info_current(info, self.now), (False, "timestamp expires inválido"))
 
     def test_polygon_parses_lat_lon_and_rejects_bad_input(self):
-        polygon = polygon_from_cap(
+        polygon = parse_cap_polygon(
             "-20.0,-47.0 -20.1,-47.0 -20.1,-47.1 -20.0,-47.0"
         )
         self.assertIsNotNone(polygon)
         self.assertTrue(polygon.is_valid)
-        self.assertIsNone(polygon_from_cap("bad input"))
+        self.assertIsNone(parse_cap_polygon("bad input"))
         self.assertIsNone(
-            polygon_from_cap("-20.0,-47.0 -20.1,-47.0 -20.1,-47.1")
+            parse_cap_polygon("-20.0,-47.0 -20.1,-47.0 -20.1,-47.1")
         )
         self.assertIsNone(
-            polygon_from_cap(
+            parse_cap_polygon(
                 "-20.0,-47.0 -20.1,-47.0 999,-47.1 -20.0,-47.0"
             )
         )
 
     def test_circle_radius_is_converted_to_polygon(self):
-        circle = circle_from_cap("-20.0,-47.0 10")
+        circle = parse_cap_circle("-20.0,-47.0 10")
         self.assertIsNotNone(circle)
         self.assertTrue(circle.is_valid)
         self.assertGreater(circle.area, 0)
 
     def test_polygon_intersection_includes_boundary_touch(self):
         alert = ET.fromstring(
-            f'<c:alert xmlns:c="{NS["c"]}"><c:info>'
+            f'<c:alert xmlns:c="{XML_NAMESPACES["c"]}"><c:info>'
             '<c:area><c:polygon>'
             '-20.0,-47.0 -20.1,-47.0 -20.1,-47.1 -20.0,-47.0'
             '</c:polygon></c:area></c:info></c:alert>'
@@ -213,7 +214,7 @@ class CapValidationTests(unittest.TestCase):
             "outside": box(-46.8, -20.08, -46.7, -20.02),
         }
         names = {"inside": "Dentro", "edge": "Borda", "outside": "Fora"}
-        cities, _expired, _circles = intersecting_municipalities(
+        cities, _expired, _circles = find_intersecting_municipalities(
             alert, boundaries, names, self.now
         )
         self.assertEqual(cities, {"Dentro", "Borda"})
@@ -228,14 +229,14 @@ class CapValidationTests(unittest.TestCase):
         )
         boundaries = {"3524105": box(-47.08, -20.08, -47.02, -20.02)}
         names = {"3524105": "Ituverava"}
-        cities, _expired, _circles = intersecting_municipalities(
+        cities, _expired, _circles = find_intersecting_municipalities(
             alert, boundaries, names, self.now
         )
         self.assertEqual(cities, {"Ituverava"})
 
     def test_circle_intersection_finds_nearby_municipality(self):
         alert = ET.fromstring(
-            f'<c:alert xmlns:c="{NS["c"]}"><c:info>'
+            f'<c:alert xmlns:c="{XML_NAMESPACES["c"]}"><c:info>'
             '<c:area><c:circle>-20.0,-47.0 10</c:circle></c:area>'
             '</c:info></c:alert>'
         )
@@ -244,7 +245,7 @@ class CapValidationTests(unittest.TestCase):
             "far": box(-47.5, -20.5, -47.4, -20.4),
         }
         names = {"near": "Próximo", "far": "Distante"}
-        cities, _expired, circle_count = intersecting_municipalities(
+        cities, _expired, circle_count = find_intersecting_municipalities(
             alert, boundaries, names, self.now
         )
         self.assertEqual(cities, {"Próximo"})
@@ -252,10 +253,10 @@ class CapValidationTests(unittest.TestCase):
 
     def test_references_extract_sender_and_identifier(self):
         self.assertEqual(
-            references_to_keys("sender@example,alert-123,2026-10-22T12:00:00Z"),
+            parse_reference_keys("sender@example,alert-123,2026-10-22T12:00:00Z"),
             {("sender@example", "alert-123")},
         )
-        self.assertEqual(references_to_keys("bad-reference"), set())
+        self.assertEqual(parse_reference_keys("bad-reference"), set())
 
     def test_alert_without_sent_timestamp_is_rejected(self):
         xml = """<feed xmlns="http://www.w3.org/2005/Atom"
@@ -267,7 +268,7 @@ class CapValidationTests(unittest.TestCase):
           </c:alert></content></entry>
         </feed>"""
         root = ET.fromstring(xml)
-        active, _expired = active_alert_entries(root, self.now)
+        active, _expired = get_active_alert_entries(root, self.now)
         self.assertEqual(active, [])
 
     def test_future_cancel_does_not_suppress_current_alert(self):
@@ -287,9 +288,9 @@ class CapValidationTests(unittest.TestCase):
           </c:alert></content></entry>
         </feed>"""
         root = ET.fromstring(xml)
-        active, _expired = active_alert_entries(root, self.now)
+        active, _expired = get_active_alert_entries(root, self.now)
         self.assertEqual(len(active), 1)
-        self.assertEqual(active[0][1].findtext("c:identifier", namespaces=NS), "old-id")
+        self.assertEqual(active[0][1].findtext("c:identifier", namespaces=XML_NAMESPACES), "old-id")
 
     def test_reference_from_another_sender_does_not_suppress_alert(self):
         xml = """<feed xmlns="http://www.w3.org/2005/Atom"
@@ -308,9 +309,9 @@ class CapValidationTests(unittest.TestCase):
           </c:alert></content></entry>
         </feed>"""
         root = ET.fromstring(xml)
-        active, _expired = active_alert_entries(root, self.now)
+        active, _expired = get_active_alert_entries(root, self.now)
         self.assertEqual(len(active), 1)
-        self.assertEqual(active[0][1].findtext("c:identifier", namespaces=NS), "same-id")
+        self.assertEqual(active[0][1].findtext("c:identifier", namespaces=XML_NAMESPACES), "same-id")
 
     def test_update_suppresses_original_and_returns_update(self):
         xml = """<feed xmlns="http://www.w3.org/2005/Atom"
@@ -330,10 +331,10 @@ class CapValidationTests(unittest.TestCase):
           </c:alert></content></entry>
         </feed>"""
         root = ET.fromstring(xml)
-        active, _expired = active_alert_entries(root, self.now)
+        active, _expired = get_active_alert_entries(root, self.now)
         self.assertEqual(len(active), 1)
         self.assertEqual(
-            active[0][1].findtext("c:identifier", namespaces=NS),
+            active[0][1].findtext("c:identifier", namespaces=XML_NAMESPACES),
             "update-id",
         )
 
@@ -352,13 +353,13 @@ class CapValidationTests(unittest.TestCase):
           </c:alert></content></entry>
         </feed>"""
         root = ET.fromstring(xml)
-        active, _expired = active_alert_entries(root, self.now)
+        active, _expired = get_active_alert_entries(root, self.now)
         self.assertEqual(active, [])
 
 
     def test_ibge_geocode_matches_municipality_without_polygon_or_circle(self):
         alert = ET.fromstring(
-            f'<c:alert xmlns:c="{NS["c"]}"><c:info><c:area>'
+            f'<c:alert xmlns:c="{XML_NAMESPACES["c"]}"><c:info><c:area>'
             '<c:areaDesc>Ituverava/SP</c:areaDesc>'
             '<c:geocode><c:valueName>IBGE</c:valueName>'
             '<c:value>3524105</c:value></c:geocode>'
@@ -366,7 +367,7 @@ class CapValidationTests(unittest.TestCase):
         )
         boundaries = {"3524105": box(-47.8, -20.5, -47.7, -20.4)}
         names = {"3524105": "Ituverava"}
-        cities, _expired, _circles = intersecting_municipalities(
+        cities, _expired, _circles = find_intersecting_municipalities(
             alert, boundaries, names, self.now
         )
         self.assertEqual(cities, {"Ituverava"})

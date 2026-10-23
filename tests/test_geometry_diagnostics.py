@@ -3,10 +3,8 @@ from unittest.mock import patch
 import urllib.error
 import xml.etree.ElementTree as ET
 
-from testar_alertas_regiao_ituverava import (
-    avisos_poligonos_invalidos,
-    baixar_com_retentativas,
-)
+from testar_alertas_regiao_ituverava import diagnose_invalid_polygons
+from mesh_alerts_boundaries import download_with_retries
 
 CAP_NS = "urn:oasis:names:tc:emergency:cap:1.2"
 
@@ -19,7 +17,7 @@ class GeometryDiagnosticTests(unittest.TestCase):
             '</c:area></c:info></c:alert>'
         )
 
-        warnings = avisos_poligonos_invalidos(alert)
+        warnings = diagnose_invalid_polygons(alert)
 
         self.assertEqual(len(warnings), 1)
         self.assertIn("não interpretável", warnings[0])
@@ -39,21 +37,21 @@ class NetworkRetryTests(unittest.TestCase):
                 return b"ok"
 
         with patch(
-            "testar_alertas_regiao_ituverava.urllib.request.urlopen",
+            "mesh_alerts_boundaries.urllib.request.urlopen",
             side_effect=[urllib.error.URLError("timed out"), Response()],
-        ) as urlopen, patch("testar_alertas_regiao_ituverava.time.sleep"):
-            data = baixar_com_retentativas(object(), "fonte de teste")
+        ) as urlopen, patch("mesh_alerts_boundaries.time.sleep"):
+            data = download_with_retries(object(), "fonte de teste")
 
         self.assertEqual(data, b"ok")
         self.assertEqual(urlopen.call_count, 2)
 
     def test_raises_after_all_retries_fail(self):
         with patch(
-            "testar_alertas_regiao_ituverava.urllib.request.urlopen",
+            "mesh_alerts_boundaries.urllib.request.urlopen",
             side_effect=urllib.error.URLError("timed out"),
-        ) as urlopen, patch("testar_alertas_regiao_ituverava.time.sleep"):
+        ) as urlopen, patch("mesh_alerts_boundaries.time.sleep"):
             with self.assertRaisesRegex(RuntimeError, "após 3 tentativas"):
-                baixar_com_retentativas(object(), "fonte de teste")
+                download_with_retries(object(), "fonte de teste")
 
         self.assertEqual(urlopen.call_count, 3)
 

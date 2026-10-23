@@ -1,4 +1,4 @@
-"""Consulta e formata previsões diárias do INMET, sem transmitir mensagens."""
+"""Retrieve and format daily INMET forecasts without transmitting messages."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from mesh_alerts_config import carregar_configuracao
+from mesh_alerts_config import load_configuration
 
-PERIODOS = {"manha": "MANHÃ", "tarde": "TARDE", "noite": "NOITE"}
+PERIOD_LABELS = {"manha": "MANHÃ", "tarde": "TARDE", "noite": "NOITE"}
 USER_AGENT = "mesh-alerts/0.1"
-VENTO_NORMALIZADO = {
+WIND_INTENSITY_LABELS = {
     "fracos": "fraco",
     "moderados": "moderado",
     "fortes": "forte",
@@ -20,27 +20,27 @@ VENTO_NORMALIZADO = {
 }
 
 
-class PrevisaoIndisponivelError(RuntimeError):
-    """A API não forneceu a previsão do dia/período solicitado."""
+class ForecastUnavailableError(RuntimeError):
+    """The API did not provide a forecast for the requested date and period."""
 
 
-def data_local_atual(config: dict[str, Any], agora: datetime | None = None) -> date:
-    """Obtém a data atual no fuso configurado, inclusive quando chamada por UTC."""
-    fuso = ZoneInfo(config["inmet"].get("fuso_horario", "America/Sao_Paulo"))
-    instante = agora if agora is not None else datetime.now(fuso)
-    if instante.tzinfo is None:
-        instante = instante.replace(tzinfo=fuso)
-    return instante.astimezone(fuso).date()
+def get_local_date(config: dict[str, Any], now: datetime | None = None) -> date:
+    """Return the current date in the configured time zone."""
+    timezone = ZoneInfo(config["inmet"].get("fuso_horario", "America/Sao_Paulo"))
+    instant = now if now is not None else datetime.now(timezone)
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone)
+    return instant.astimezone(timezone).date()
 
 
-def buscar_previsao(codigo_ibge: str, config: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Consulta o endpoint oficial do INMET para um município."""
-    config = config or carregar_configuracao()
+def fetch_forecast(ibge_code: str, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Retrieve the official INMET forecast for a municipality."""
+    config = config or load_configuration()
     inmet = config["inmet"]
     base_url = str(inmet.get("previsao_url", "")).rstrip("/")
     if not base_url:
         raise ValueError("inmet.previsao_url não foi configurada.")
-    url = f"{base_url}/{codigo_ibge}"
+    url = f"{base_url}/{ibge_code}"
     request = urllib.request.Request(
         url,
         headers={
@@ -50,88 +50,88 @@ def buscar_previsao(codigo_ibge: str, config: dict[str, Any] | None = None) -> d
     )
     timeout = int(inmet.get("timeout_segundos", 30))
     with urllib.request.urlopen(request, timeout=timeout) as resposta:
-        dados = json.loads(resposta.read().decode("utf-8"))
-    if not isinstance(dados, dict):
-        raise ValueError(f"Resposta inesperada do INMET para o código IBGE {codigo_ibge}.")
-    return dados
+        data = json.loads(resposta.read().decode("utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"Resposta inesperada do INMET para o código IBGE {ibge_code}.")
+    return data
 
 
-def selecionar_periodo_do_dia(
-    dados: dict[str, Any],
-    codigo_ibge: str,
-    periodo: str,
-    hoje: date,
+def select_forecast_period(
+    data: dict[str, Any],
+    ibge_code: str,
+    period: str,
+    forecast_date: date,
 ) -> dict[str, Any]:
-    """Seleciona apenas o período solicitado na data de hoje; nunca usa dias futuros."""
-    if periodo not in PERIODOS:
-        raise ValueError(f"Período inválido: {periodo!r}.")
-    municipios = dados.get(str(codigo_ibge))
-    if not isinstance(municipios, dict):
-        raise PrevisaoIndisponivelError(
-            f"INMET não retornou o município IBGE {codigo_ibge}."
+    """Select the requested period for the specified date without falling back to future dates."""
+    if period not in PERIOD_LABELS:
+        raise ValueError(f"Período inválido: {period!r}.")
+    municipalities = data.get(str(ibge_code))
+    if not isinstance(municipalities, dict):
+        raise ForecastUnavailableError(
+            f"INMET não retornou o município IBGE {ibge_code}."
         )
-    previsao_dia = municipios.get(hoje.strftime("%d/%m/%Y"))
-    if not isinstance(previsao_dia, dict):
-        raise PrevisaoIndisponivelError(
-            f"INMET não retornou previsão para hoje ({hoje:%d/%m/%Y}), código {codigo_ibge}."
+    daily_forecast = municipalities.get(forecast_date.strftime("%d/%m/%Y"))
+    if not isinstance(daily_forecast, dict):
+        raise ForecastUnavailableError(
+            f"INMET não retornou previsão para hoje ({forecast_date:%d/%m/%Y}), código {ibge_code}."
         )
-    dados_periodo = previsao_dia.get(periodo)
-    if not isinstance(dados_periodo, dict):
-        raise PrevisaoIndisponivelError(
-            f"INMET não retornou o período {periodo} de hoje ({hoje:%d/%m/%Y}), "
-            f"código {codigo_ibge}."
+    period_forecast = daily_forecast.get(period)
+    if not isinstance(period_forecast, dict):
+        raise ForecastUnavailableError(
+            f"INMET não retornou o período {period} de hoje ({forecast_date:%d/%m/%Y}), "
+            f"código {ibge_code}."
         )
-    return dados_periodo
+    return period_forecast
 
 
-def formatar_mensagem(
-    municipio: dict[str, str],
-    periodo: str,
-    previsao: dict[str, Any],
+def format_bulletin_message(
+    municipality: dict[str, str],
+    period: str,
+    forecast: dict[str, Any],
 ) -> str:
-    """Formata o boletim compacto em duas linhas, preservando o resumo do INMET."""
-    if periodo not in PERIODOS:
-        raise ValueError(f"Período inválido: {periodo!r}.")
+    """Format a compact two-line bulletin while preserving the INMET summary."""
+    if period not in PERIOD_LABELS:
+        raise ValueError(f"Período inválido: {period!r}.")
 
-    nome = str(municipio.get("nome", "")).strip()
-    uf = str(municipio.get("uf", "")).strip().upper()
-    if not nome or len(uf) != 2:
+    name = str(municipality.get("nome", "")).strip()
+    state = str(municipality.get("uf", "")).strip().upper()
+    if not name or len(state) != 2:
         raise ValueError("Município precisa ter nome e UF válidos.")
 
-    resumo = str(previsao.get("resumo") or "").strip()
-    if not resumo:
-        raise PrevisaoIndisponivelError("INMET retornou um resumo vazio para o período.")
+    summary = str(forecast.get("resumo") or "").strip()
+    if not summary:
+        raise ForecastUnavailableError("INMET retornou um resumo vazio para o período.")
 
-    partes = [resumo]
-    temp_max = previsao.get("temp_max")
-    temp_min = previsao.get("temp_min")
-    if temp_max is not None and temp_min is not None:
-        partes.append(f"{temp_max}/{temp_min}°C")
+    parts = [summary]
+    max_temp = forecast.get("temp_max")
+    min_temp = forecast.get("temp_min")
+    if max_temp is not None and min_temp is not None:
+        parts.append(f"{max_temp}/{min_temp}°C")
 
-    umidade_max = previsao.get("umidade_max")
-    umidade_min = previsao.get("umidade_min")
-    if umidade_max is not None and umidade_min is not None:
-        partes.append(f"U{umidade_max}/{umidade_min}%")
+    max_humidity = forecast.get("umidade_max")
+    min_humidity = forecast.get("umidade_min")
+    if max_humidity is not None and min_humidity is not None:
+        parts.append(f"U{max_humidity}/{min_humidity}%")
 
-    vento = str(previsao.get("int_vento") or "").strip()
-    if vento:
-        vento = VENTO_NORMALIZADO.get(vento.casefold(), vento.casefold())
-        partes.append(f"Vento {vento}")
+    wind = str(forecast.get("int_vento") or "").strip()
+    if wind:
+        wind = WIND_INTENSITY_LABELS.get(wind.casefold(), wind.casefold())
+        parts.append(f"Vento {wind}")
 
-    return f"{nome.upper()}/{uf} • {PERIODOS[periodo]}\n" + " | ".join(partes)
+    return f"{name.upper()}/{state} • {PERIOD_LABELS[period]}\n" + " | ".join(parts)
 
 
-def gerar_mensagem_municipal(
-    municipio: dict[str, str],
-    periodo: str,
-    hoje: date | None = None,
+def build_municipal_bulletin(
+    municipality: dict[str, str],
+    period: str,
+    forecast_date: date | None = None,
     config: dict[str, Any] | None = None,
-    agora: datetime | None = None,
+    now: datetime | None = None,
 ) -> str:
-    """Consulta e formata a previsão de hoje para um município e período."""
-    config = config or carregar_configuracao()
-    data_previsao = hoje or data_local_atual(config, agora)
-    codigo = str(municipio["codigo_ibge"])
-    dados = buscar_previsao(codigo, config)
-    previsao = selecionar_periodo_do_dia(dados, codigo, periodo, data_previsao)
-    return formatar_mensagem(municipio, periodo, previsao)
+    """Retrieve and format today's forecast for a municipality and period."""
+    config = config or load_configuration()
+    selected_date = forecast_date or get_local_date(config, now)
+    code = str(municipality["codigo_ibge"])
+    data = fetch_forecast(code, config)
+    forecast = select_forecast_period(data, code, period, selected_date)
+    return format_bulletin_message(municipality, period, forecast)

@@ -1,4 +1,4 @@
-"""Validação temporal e espacial de alertas CAP 1.2."""
+"""Temporal and spatial validation of CAP 1.2 alerts."""
 
 from __future__ import annotations
 
@@ -7,17 +7,18 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
+from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 
 ATOM_NS = "http://www.w3.org/2005/Atom"
 CAP_NS = "urn:oasis:names:tc:emergency:cap:1.2"
-NS = {"a": ATOM_NS, "c": CAP_NS}
+XML_NAMESPACES = {"a": ATOM_NS, "c": CAP_NS}
 EARTH_RADIUS_KM = 6371.0088
 
 
-def parse_cap_datetime(value: str | None) -> datetime | None:
-    """Parse a CAP timestamp. Return None when absent or invalid."""
+def parse_cap_timestamp(value: str | None) -> datetime | None:
+    """Parse a CAP timestamp, returning None when it is absent or invalid."""
     if not value:
         return None
     try:
@@ -29,16 +30,19 @@ def parse_cap_datetime(value: str | None) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def info_is_current(info: ET.Element, now: datetime) -> tuple[bool, str | None]:
-    """Check effective/onset/expires; malformed supplied timestamps fail closed."""
+def is_info_current(info: ET.Element, now: datetime) -> tuple[bool, str | None]:
+    """Validate effective, onset, and expires timestamps.
+
+    Malformed supplied timestamps invalidate the information block.
+    """
     now = now.astimezone(timezone.utc)
     # "onset" describes when the event is expected to begin, not when
     # the warning itself becomes effective. A warning may be current before onset.
     for field in ("effective", "expires"):
-        raw = info.findtext(f"c:{field}", default="", namespaces=NS).strip()
+        raw = info.findtext(f"c:{field}", default="", namespaces=XML_NAMESPACES).strip()
         if not raw:
             continue
-        parsed = parse_cap_datetime(raw)
+        parsed = parse_cap_timestamp(raw)
         if parsed is None:
             return False, f"timestamp {field} inválido"
         if field == "effective" and parsed > now:
@@ -46,31 +50,31 @@ def info_is_current(info: ET.Element, now: datetime) -> tuple[bool, str | None]:
         if field == "expires" and parsed <= now:
             return False, "expires expirado"
     # Validate a supplied onset even though a future onset does not deactivate it.
-    onset = info.findtext("c:onset", default="", namespaces=NS).strip()
-    if onset and parse_cap_datetime(onset) is None:
+    onset = info.findtext("c:onset", default="", namespaces=XML_NAMESPACES).strip()
+    if onset and parse_cap_timestamp(onset) is None:
         return False, "timestamp onset inválido"
     return True, None
 
 
-def _polygonal_parts(geometry) -> list[Polygon]:
-    """Keep polygon components only, excluding collapsed lines from repairs."""
+def _extract_polygonal_parts(geometry: BaseGeometry) -> list[Polygon]:
+    """Retain polygon components and discard collapsed non-polygonal geometry."""
     if isinstance(geometry, Polygon):
         return [geometry] if not geometry.is_empty and geometry.area > 0 else []
     if isinstance(geometry, (MultiPolygon, GeometryCollection)):
         parts = []
         for component in geometry.geoms:
-            parts.extend(_polygonal_parts(component))
+            parts.extend(_extract_polygonal_parts(component))
         return parts
     return []
 
 
-def polygon_from_cap(value: str) -> Polygon | MultiPolygon | None:
-    """Convert a closed CAP polygon to repaired polygonal WGS84 geometry."""
+def parse_cap_polygon(value: str) -> Polygon | MultiPolygon | None:
+    """Parse a closed CAP polygon and repair invalid polygonal geometry."""
     pairs = (value or "").split()
     if len(pairs) < 4:
         return None
 
-    coords = []
+    coordinates = []
     for pair in pairs:
         try:
             parts = pair.split(",")
@@ -83,17 +87,17 @@ def polygon_from_cap(value: str) -> Polygon | MultiPolygon | None:
             return None
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             return None
-        coords.append((lon, lat))
+        coordinates.append((lon, lat))
 
     # CAP polygon boundaries must explicitly repeat the first point at the end.
-    if coords[0] != coords[-1]:
+    if coordinates[0] != coordinates[-1]:
         return None
 
     try:
-        geometry = Polygon(coords)
+        geometry = Polygon(coordinates)
         if not geometry.is_valid:
             geometry = make_valid(geometry)
-        parts = _polygonal_parts(geometry)
+        parts = _extract_polygonal_parts(geometry)
         if not parts:
             return None
         repaired = unary_union(parts)
@@ -106,8 +110,8 @@ def polygon_from_cap(value: str) -> Polygon | MultiPolygon | None:
         return None
 
 
-def circle_from_cap(value: str, points: int = 72) -> Polygon | None:
-    """Approximate a CAP circle with geodesic points, preserving radius in km."""
+def parse_cap_circle(value: str, points: int = 72) -> Polygon | None:
+    """Approximate a CAP circle with geodesic points while preserving its radius in kilometers."""
     try:
         center, radius_text = (value or "").rsplit(None, 1)
         lat1, lon1 = (float(part) for part in center.split(","))
@@ -124,7 +128,7 @@ def circle_from_cap(value: str, points: int = 72) -> Polygon | None:
     angular = radius_km / EARTH_RADIUS_KM
     phi1 = math.radians(lat1)
     lam1 = math.radians(lon1)
-    coords = []
+    coordinates = []
     for index in range(points):
         bearing = 2 * math.pi * index / points
         phi2 = math.asin(
@@ -136,55 +140,57 @@ def circle_from_cap(value: str, points: int = 72) -> Polygon | None:
             math.cos(angular) - math.sin(phi1) * math.sin(phi2),
         )
         lon2 = (math.degrees(lam2) + 540) % 360 - 180
-        coords.append((lon2, math.degrees(phi2)))
-    polygon = Polygon(coords)
+        coordinates.append((lon2, math.degrees(phi2)))
+    polygon = Polygon(coordinates)
     if not polygon.is_valid:
         polygon = polygon.buffer(0)
     return None if polygon.is_empty else polygon
 
 
-def references_to_keys(value: str | None) -> set[tuple[str, str]]:
-    """Extract (sender, identifier) keys from CAP sender,identifier,sent tuples."""
+def parse_reference_keys(value: str | None) -> set[tuple[str, str]]:
+    """Extract sender and identifier pairs from CAP sender,identifier,sent references."""
     keys: set[tuple[str, str]] = set()
     for reference in (value or "").split():
         parts = reference.split(",")
-        if len(parts) == 3 and parts[0] and parts[1] and parse_cap_datetime(parts[2]):
+        if len(parts) == 3 and parts[0] and parts[1] and parse_cap_timestamp(parts[2]):
             keys.add((parts[0], parts[1]))
     return keys
 
 
-def alert_key(alert: ET.Element) -> tuple[str, str] | None:
-    """Return the CAP identity pair (sender, identifier)."""
-    sender = alert.findtext("c:sender", default="", namespaces=NS).strip()
-    identifier = alert.findtext("c:identifier", default="", namespaces=NS).strip()
+def get_alert_key(alert: ET.Element) -> tuple[str, str] | None:
+    """Return the CAP sender and identifier pair."""
+    sender = alert.findtext("c:sender", default="", namespaces=XML_NAMESPACES).strip()
+    identifier = alert.findtext("c:identifier", default="", namespaces=XML_NAMESPACES).strip()
     return (sender, identifier) if sender and identifier else None
 
 
-def active_alert_entries(root: ET.Element, now: datetime) -> tuple[list[tuple[ET.Element, ET.Element]], int]:
-    """Resolve current Actual Alert/Update messages and valid references to old IDs."""
+def get_active_alert_entries(
+    root: ET.Element, now: datetime
+) -> tuple[list[tuple[ET.Element, ET.Element]], int]:
+    """Resolve current Actual Alert and Update messages and their valid references."""
     records: list[tuple[ET.Element, ET.Element, str, tuple[str, str]]] = []
     suppressed: set[tuple[str, str]] = set()
     expired_info_count = 0
     now_utc = now.astimezone(timezone.utc)
 
-    for entry in root.findall("a:entry", NS):
-        alert = entry.find(".//c:alert", NS)
+    for entry in root.findall("a:entry", XML_NAMESPACES):
+        alert = entry.find(".//c:alert", XML_NAMESPACES)
         if alert is None:
             continue
-        if alert.findtext("c:status", default="", namespaces=NS) != "Actual":
+        if alert.findtext("c:status", default="", namespaces=XML_NAMESPACES) != "Actual":
             continue
-        msg_type = alert.findtext("c:msgType", default="", namespaces=NS)
+        msg_type = alert.findtext("c:msgType", default="", namespaces=XML_NAMESPACES)
         if msg_type not in ("Alert", "Update", "Cancel"):
             continue
 
-        key = alert_key(alert)
-        sent = parse_cap_datetime(alert.findtext("c:sent", default="", namespaces=NS))
+        key = get_alert_key(alert)
+        sent = parse_cap_timestamp(alert.findtext("c:sent", default="", namespaces=XML_NAMESPACES))
         if key is None or sent is None or sent > now_utc:
             continue
 
         # Only a message already sent can supersede an earlier alert.
-        references = references_to_keys(
-            alert.findtext("c:references", default="", namespaces=NS)
+        references = parse_reference_keys(
+            alert.findtext("c:references", default="", namespaces=XML_NAMESPACES)
         )
         if msg_type in ("Update", "Cancel"):
             suppressed.update(references)
@@ -195,10 +201,10 @@ def active_alert_entries(root: ET.Element, now: datetime) -> tuple[list[tuple[ET
         if msg_type == "Cancel" or key in suppressed:
             continue
 
-        infos = alert.findall("c:info", NS)
+        info_blocks = alert.findall("c:info", XML_NAMESPACES)
         has_current_info = False
-        for info in infos:
-            current, reason = info_is_current(info, now_utc)
+        for info in info_blocks:
+            current, reason = is_info_current(info, now_utc)
             if not current and reason == "expires expirado":
                 expired_info_count += 1
             if current:
@@ -208,9 +214,9 @@ def active_alert_entries(root: ET.Element, now: datetime) -> tuple[list[tuple[ET
     return active, expired_info_count
 
 
-def intersecting_municipalities(
+def find_intersecting_municipalities(
     alert: ET.Element,
-    boundaries: dict[str, object],
+    boundaries: dict[str, BaseGeometry],
     municipality_names: dict[str, str],
     now: datetime,
 ) -> tuple[set[str], int, int]:
@@ -218,31 +224,31 @@ def intersecting_municipalities(
     cities: set[str] = set()
     expired_count = 0
     circle_count = 0
-    for info in alert.findall("c:info", NS):
-        current, reason = info_is_current(info, now)
+    for info in alert.findall("c:info", XML_NAMESPACES):
+        current, reason = is_info_current(info, now)
         if not current:
             if reason == "expires expirado":
                 expired_count += 1
             continue
-        for area in info.findall("c:area", NS):
+        for area in info.findall("c:area", XML_NAMESPACES):
             # CAP area geometry is the union of polygons, circles, and geocodes.
             # Exact IBGE matches remain useful when the sender supplies no geometry.
-            for geocode in area.findall("c:geocode", NS):
+            for geocode in area.findall("c:geocode", XML_NAMESPACES):
                 value_name = geocode.findtext(
-                    "c:valueName", default="", namespaces=NS
+                    "c:valueName", default="", namespaces=XML_NAMESPACES
                 ).strip()
-                value = geocode.findtext("c:value", default="", namespaces=NS).strip()
+                value = geocode.findtext("c:value", default="", namespaces=XML_NAMESPACES).strip()
                 if value_name.upper() == "IBGE" and value in municipality_names:
                     cities.add(municipality_names[value])
 
             geometries = []
-            for node in area.findall("c:polygon", NS):
-                polygon = polygon_from_cap(node.text or "")
+            for node in area.findall("c:polygon", XML_NAMESPACES):
+                polygon = parse_cap_polygon(node.text or "")
                 if polygon is not None:
                     geometries.append(polygon)
-            for node in area.findall("c:circle", NS):
+            for node in area.findall("c:circle", XML_NAMESPACES):
                 circle_count += 1
-                polygon = circle_from_cap(node.text or "")
+                polygon = parse_cap_circle(node.text or "")
                 if polygon is not None:
                     geometries.append(polygon)
             for geometry in geometries:

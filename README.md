@@ -39,15 +39,15 @@ O módulo fornece funções para consultar e formatar previsões, mas não envia
 
 ```bash
 python3 - <<'PY'
-from mesh_alerts_config import carregar_configuracao
-from mesh_alerts_inmet import gerar_mensagem_municipal
+from mesh_alerts_config import load_configuration
+from mesh_alerts_inmet import build_municipal_bulletin
 
-config = carregar_configuracao()
-for municipio in config["municipios"]:
+config = load_configuration()
+for municipality in config["municipios"]:
     try:
-        print(gerar_mensagem_municipal(municipio, "manha", config=config))
-    except Exception as erro:
-        print(f'{municipio["nome"]}: previsão indisponível: {erro}')
+        print(build_municipal_bulletin(municipality, "manha", config=config))
+    except Exception as error:
+        print(f'{municipality["nome"]}: previsão indisponível: {error}')
     print()
 PY
 ```

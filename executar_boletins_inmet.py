@@ -1,4 +1,4 @@
-"""CLI de boletins INMET: simulação por padrão; rádio somente com --send explícito."""
+"""Run the INMET bulletin scheduler; radio transmission requires explicit --send."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from mesh_alerts_config import carregar_configuracao
-from mesh_alerts_inmet_scheduler import executar_boletim, horario_agendado
+from mesh_alerts_config import load_configuration
+from mesh_alerts_inmet_scheduler import process_bulletin, get_due_schedule_slot
 
 
 def _transport_tcp(host: str, port: int, channel: int, destination: str):
@@ -37,14 +37,24 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--database", default="data/inmet-bulletins.sqlite3")
-    parser.add_argument("--send", action="store_true", help="habilita envio real; sem esta opção, apenas simula")
-    parser.add_argument("--tcp-host", help="host do dispositivo Meshtastic TCP (obrigatório com --send)")
+    parser.add_argument(
+        "--send", action="store_true",
+        help="habilita envio real; sem esta opção, apenas simula",
+    )
+    parser.add_argument(
+        "--tcp-host", help="host do dispositivo Meshtastic TCP (obrigatório com --send)"
+    )
     parser.add_argument("--tcp-port", type=int, default=4403)
     parser.add_argument("--channel-index", type=int, default=0)
     parser.add_argument("--destination", default="^all")
-    parser.add_argument("--period", choices=("manha", "tarde", "noite"), help="simula/executa manualmente um período de hoje")
+    parser.add_argument(
+        "--period", choices=("manha", "tarde", "noite"),
+        help="simula/executa manualmente um período de hoje",
+    )
     parser.add_argument("--loop", action="store_true", help="verifica horários continuamente")
-    parser.add_argument("--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"), default="INFO")
+    parser.add_argument(
+        "--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"), default="INFO"
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -53,7 +63,7 @@ def main(argv=None) -> int:
 
     if args.period and args.loop:
         parser.error("--period é para execução pontual; remova --loop")
-    config = carregar_configuracao(args.config)
+    config = load_configuration(args.config)
     interface = None
     sender = None
     if args.send:
@@ -68,7 +78,7 @@ def main(argv=None) -> int:
     try:
         while True:
             now = datetime.now(timezone)
-            scheduled = None if args.period else horario_agendado(config, now)
+            scheduled = None if args.period else get_due_schedule_slot(config, now)
             period = args.period or (scheduled[1] if scheduled else None)
             slot = (now.date().isoformat(), scheduled[0] if scheduled else "manual", period)
             if period and slot != last_slot:
@@ -77,13 +87,13 @@ def main(argv=None) -> int:
                     "Transmitindo" if args.send else "Simulando",
                     len(config["municipios"]),
                 )
-                counts = executar_boletim(
+                counts = process_bulletin(
                     config,
                     args.database,
                     period,
                     now=now,
-                    enviar=sender,
-                    simular=not args.send,
+                    transport_sender=sender,
+                    simulate=not args.send,
                 )
                 logging.getLogger(__name__).info("Resultado do ciclo: %s", counts)
                 last_slot = slot

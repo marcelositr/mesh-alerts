@@ -5,11 +5,8 @@ import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from testar_alertas_regiao_ituverava import (
-    MUNICIPIOS,
-    limites_municipais_do_geojson,
-)
-from mesh_alerts_cap import NS, intersecting_municipalities
+from mesh_alerts_boundaries import MUNICIPALITIES, load_municipal_boundaries_from_geojson
+from mesh_alerts_cap import XML_NAMESPACES, find_intersecting_municipalities
 
 FIXTURES = Path(__file__).parent / "fixtures"
 GEOJSON = FIXTURES / "ibge-sp-municipios-api.geojson"
@@ -32,12 +29,12 @@ class RealAlertGeometryTests(unittest.TestCase):
             raise RuntimeError("SHA-256 do snapshot IBGE não confere")
 
         geojson = json.loads(raw_geojson)
-        cls.boundaries = limites_municipais_do_geojson(geojson)
+        cls.boundaries = load_municipal_boundaries_from_geojson(geojson)
         cls.municipality_names = {
-            code: MUNICIPIOS[code] for code in MUNICIPIOS
+            code: MUNICIPALITIES[code] for code in MUNICIPALITIES
         }
         feed = ET.parse(ALERT_XML).getroot()
-        alerts = feed.findall(".//c:alert", NS)
+        alerts = feed.findall(".//c:alert", XML_NAMESPACES)
         if len(alerts) != 1:
             raise RuntimeError(
                 f"Esperado exatamente um alerta CAP; encontrados: {len(alerts)}"
@@ -46,10 +43,10 @@ class RealAlertGeometryTests(unittest.TestCase):
         cls.now = datetime.fromisoformat("2026-10-22T14:00:00-03:00")
 
     def test_snapshot_contains_all_six_municipalities(self):
-        self.assertEqual(set(self.boundaries), set(MUNICIPIOS))
+        self.assertEqual(set(self.boundaries), set(MUNICIPALITIES))
 
     def test_real_cap_alert_matches_expected_municipalities(self):
-        cities, expired_count, circle_count = intersecting_municipalities(
+        cities, expired_count, circle_count = find_intersecting_municipalities(
             self.root,
             self.boundaries,
             self.municipality_names,

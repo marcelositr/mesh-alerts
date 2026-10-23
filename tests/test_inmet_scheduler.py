@@ -5,11 +5,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from mesh_alerts_inmet import PrevisaoIndisponivelError
+from mesh_alerts_inmet import ForecastUnavailableError
 from mesh_alerts_inmet_scheduler import (
-    executar_boletim,
-    horario_agendado,
-    periodo_agendado,
+    process_bulletin,
+    get_due_schedule_slot,
+    get_due_period,
 )
 
 
@@ -43,23 +43,23 @@ class InmetSchedulerTests(unittest.TestCase):
         return f'{municipality["nome"]} {period} {now:%Y-%m-%d}'
 
     def test_schedule_recovers_only_inside_configured_window(self):
-        self.assertEqual(periodo_agendado(self.config, self.now), "manha")
+        self.assertEqual(get_due_period(self.config, self.now), "manha")
         self.assertEqual(
-            horario_agendado(self.config, self.now.replace(minute=1)),
+            get_due_schedule_slot(self.config, self.now.replace(minute=1)),
             ("06:00", "manha"),
         )
-        self.assertIsNone(periodo_agendado(self.config, self.now.replace(minute=31)))
+        self.assertIsNone(get_due_period(self.config, self.now.replace(minute=31)))
 
     def test_simulation_never_calls_transport_or_persists_delivery(self):
         calls = []
-        result = executar_boletim(
+        result = process_bulletin(
             self.config,
             self.database,
             "manha",
             now=self.now,
-            enviar=calls.append,
-            simular=True,
-            construir_mensagem=self.builder,
+            transport_sender=calls.append,
+            simulate=True,
+            message_builder=self.builder,
             sleep=lambda _: self.fail("simulation must not sleep"),
         )
         self.assertEqual(result["prepared"], 2)
@@ -70,24 +70,24 @@ class InmetSchedulerTests(unittest.TestCase):
 
     def test_successful_bulletin_is_persisted_and_duplicate_run_sends_nothing(self):
         calls, delays = [], []
-        first = executar_boletim(
+        first = process_bulletin(
             self.config,
             self.database,
             "manha",
             now=self.now,
-            enviar=calls.append,
-            simular=False,
-            construir_mensagem=self.builder,
+            transport_sender=calls.append,
+            simulate=False,
+            message_builder=self.builder,
             sleep=delays.append,
         )
-        second = executar_boletim(
+        second = process_bulletin(
             self.config,
             self.database,
             "manha",
             now=self.now,
-            enviar=calls.append,
-            simular=False,
-            construir_mensagem=self.builder,
+            transport_sender=calls.append,
+            simulate=False,
+            message_builder=self.builder,
             sleep=delays.append,
         )
         self.assertEqual(first["sent"], 2)
@@ -110,14 +110,14 @@ class InmetSchedulerTests(unittest.TestCase):
                 ("2026-10-22", "manha", "3503000", "sent", previous_delivery),
             )
         delays = []
-        result = executar_boletim(
+        result = process_bulletin(
             self.config,
             self.database,
             "manha",
             now=self.now,
-            enviar=lambda _: None,
-            simular=False,
-            construir_mensagem=self.builder,
+            transport_sender=lambda _: None,
+            simulate=False,
+            message_builder=self.builder,
             sleep=delays.append,
         )
         self.assertEqual(result["duplicate"], 1)
@@ -142,14 +142,14 @@ class InmetSchedulerTests(unittest.TestCase):
                 ("2026-10-22", "manha", "3503000", "sent", previous_delivery),
             )
         delays = []
-        result = executar_boletim(
+        result = process_bulletin(
             self.config,
             self.database,
             "manha",
             now=self.now,
-            enviar=lambda _: None,
-            simular=False,
-            construir_mensagem=self.builder,
+            transport_sender=lambda _: None,
+            simulate=False,
+            message_builder=self.builder,
             sleep=delays.append,
         )
         self.assertEqual(result["duplicate"], 1)
@@ -161,17 +161,17 @@ class InmetSchedulerTests(unittest.TestCase):
 
         def builder(municipality, period, now):
             if municipality["codigo_ibge"] == "3503000":
-                raise PrevisaoIndisponivelError("forecast not published")
+                raise ForecastUnavailableError("forecast not published")
             return self.builder(municipality, period, now)
 
-        result = executar_boletim(
+        result = process_bulletin(
             self.config,
             self.database,
             "manha",
             now=self.now,
-            enviar=lambda _: None,
-            simular=False,
-            construir_mensagem=builder,
+            transport_sender=lambda _: None,
+            simulate=False,
+            message_builder=builder,
             sleep=delays.append,
         )
         self.assertEqual(result["unavailable"], 1)
@@ -185,24 +185,24 @@ class InmetSchedulerTests(unittest.TestCase):
             calls.append(message)
             raise OSError("transport unavailable")
 
-        first = executar_boletim(
+        first = process_bulletin(
             self.config,
             self.database,
             "manha",
             now=self.now,
-            enviar=broken,
-            simular=False,
-            construir_mensagem=self.builder,
+            transport_sender=broken,
+            simulate=False,
+            message_builder=self.builder,
             sleep=lambda _: None,
         )
-        second = executar_boletim(
+        second = process_bulletin(
             self.config,
             self.database,
             "manha",
             now=self.now,
-            enviar=calls.append,
-            simular=False,
-            construir_mensagem=self.builder,
+            transport_sender=calls.append,
+            simulate=False,
+            message_builder=self.builder,
             sleep=lambda _: None,
         )
         self.assertEqual(first["failed"], 2)

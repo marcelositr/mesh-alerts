@@ -1,250 +1,127 @@
 #!/usr/bin/env python3
-"""Cruza alertas CAP do IDAP com os seis municípios da região de Ituverava."""
+"""Match IDAP CAP alerts against the six municipalities in the Ituverava region."""
 
 import argparse
 import gzip
-import json
-import sys
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 
-from shapely.geometry import Polygon, shape
+from shapely.geometry import Polygon
 from shapely.validation import explain_validity
 
-from mesh_alerts_cap import (
-    NS,
-    active_alert_entries,
-    info_is_current,
-    intersecting_municipalities,
-    polygon_from_cap,
+from mesh_alerts_boundaries import (
+    MUNICIPALITIES,
+    download_with_retries,
+    load_municipal_boundaries,
 )
 
-FEED_URL = "https://idapfile.mdr.gov.br/idap/api/rss/cap"
-MUNICIPIOS = {
-    "3503000": "Aramina",
-    "3508207": "Buritizal",
-    "3517703": "Guará",
-    "3520103": "Igarapava",
-    "3524105": "Ituverava",
-    "3529708": "Miguelópolis",
-}
-MALHAS_BASE_URL = "https://servicodados.ibge.gov.br/api/v3/malhas/municipios"
+from mesh_alerts_cap import (
+    XML_NAMESPACES,
+    get_active_alert_entries,
+    is_info_current,
+    find_intersecting_municipalities,
+    parse_cap_polygon,
+)
+
+CAP_FEED_URL = "https://idapfile.mdr.gov.br/idap/api/rss/cap"
 
 
-def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
-    """Baixa uma fonte externa com novas tentativas para falhas transitórias."""
-    ultimo_erro = None
-    for tentativa in range(1, tentativas + 1):
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                return response.read()
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            ultimo_erro = exc
-            if tentativa == tentativas:
-                break
-            espera = 2 ** tentativa
-            print(
-                f"Aviso: falha ao consultar {descricao} "
-                f"(tentativa {tentativa}/{tentativas}): {exc}; nova tentativa em {espera}s",
-                file=sys.stderr,
-            )
-            time.sleep(espera)
-    raise RuntimeError(
-        f"não foi possível consultar {descricao} após {tentativas} tentativas: {ultimo_erro}"
-    ) from ultimo_erro
-
-
-def limites_municipais_do_geojson(geojson):
-    """Extrai e valida os seis limites municipais de um GeoJSON do IBGE."""
-    if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
-        raise RuntimeError("Resposta do IBGE não é um GeoJSON FeatureCollection")
-    features = geojson.get("features")
-    if not isinstance(features, list):
-        raise RuntimeError("GeoJSON do IBGE não contém uma lista de features")
-
-    limites = {}
-    for feature in features:
-        if not isinstance(feature, dict):
-            continue
-        props = feature.get("properties") or {}
-        if not isinstance(props, dict):
-            continue
-        codigo = str(
-            props.get("codarea", props.get("CD_MUN", props.get("id", "")))
-        )
-        if codigo not in MUNICIPIOS:
-            continue
-        geometry_data = feature.get("geometry")
-        if not geometry_data:
-            raise RuntimeError(f"Geometria ausente para {MUNICIPIOS[codigo]}")
-        try:
-            geometry = shape(geometry_data)
-        except Exception as exc:
-            raise RuntimeError(
-                f"Geometria inválida para {MUNICIPIOS[codigo]}"
-            ) from exc
-        if geometry.is_empty or not geometry.is_valid:
-            raise RuntimeError(f"Geometria vazia ou inválida para {MUNICIPIOS[codigo]}")
-        limites[codigo] = geometry
-
-    if len(limites) != len(MUNICIPIOS):
-        faltam = [nome for code, nome in MUNICIPIOS.items() if code not in limites]
-        raise RuntimeError(
-            f"Malha municipal incompleta ({len(limites)}/6). "
-            f"Municípios não identificados: {', '.join(faltam)}"
-        )
-    return limites
-
-
-def carregar_feed(caminho=None):
-    """Carrega XML CAP de um arquivo local ou do feed oficial."""
-    if caminho:
-        data = Path(caminho).read_bytes()
+def load_cap_feed(path: str | Path | None = None) -> ET.Element:
+    """Load CAP XML from a local file or the official feed."""
+    if path:
+        data = Path(path).read_bytes()
     else:
         request = urllib.request.Request(
-            FEED_URL, headers={"User-Agent": "mesh-alerts/0.1"}
+            CAP_FEED_URL, headers={"User-Agent": "mesh-alerts/0.1"}
         )
-        data = baixar_com_retentativas(request, "feed CAP")
+        data = download_with_retries(request, "feed CAP")
     if data[:2] == bytes((0x1f, 0x8b)):
         data = gzip.decompress(data)
     return ET.fromstring(data)
 
 
-def carregar_limites(caminho=None):
-    """Carrega limites de um GeoJSON local ou consulta as malhas atuais do IBGE."""
-    if caminho:
-        try:
-            geojson = json.loads(Path(caminho).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"não foi possível ler o GeoJSON local {caminho}: {exc}") from exc
-        return limites_municipais_do_geojson(geojson)
-
-    def carregar_malha(codigo, nome):
-        url = (
-            f"{MALHAS_BASE_URL}/{codigo}"
-            "?formato=application/vnd.geo+json&qualidade=minima"
-        )
-        request = urllib.request.Request(
-            url, headers={"User-Agent": "mesh-alerts/0.1"}
-        )
-        data = baixar_com_retentativas(
-            request, f"malha municipal de {nome}", tentativas=3, timeout=25
-        )
-        if data[:2] == bytes((0x1f, 0x8b)):
-            data = gzip.decompress(data)
-        geojson = json.loads(data.decode("utf-8"))
-        if not isinstance(geojson, dict):
-            raise RuntimeError(f"Resposta GeoJSON inválida para {nome}")
-        if geojson.get("type") == "FeatureCollection":
-            municipal_features = geojson.get("features")
-            if not isinstance(municipal_features, list):
-                raise RuntimeError(f"GeoJSON sem lista de features para {nome}")
-            return municipal_features
-        if geojson.get("type") == "Feature":
-            return [geojson]
-        raise RuntimeError(f"Resposta do IBGE não é GeoJSON para {nome}")
-
-    features = []
-    with ThreadPoolExecutor(max_workers=len(MUNICIPIOS)) as executor:
-        tarefas = {
-            executor.submit(carregar_malha, codigo, nome): nome
-            for codigo, nome in MUNICIPIOS.items()
-        }
-        for tarefa in as_completed(tarefas):
-            nome = tarefas[tarefa]
-            try:
-                features.extend(tarefa.result())
-            except Exception as exc:
-                raise RuntimeError(
-                    f"não foi possível carregar a malha municipal de {nome}: {exc}"
-                ) from exc
-
-    return limites_municipais_do_geojson(
-        {"type": "FeatureCollection", "features": features}
-    )
-
-
-def avisos_poligonos_invalidos(alert, now=None):
-    """Diagnostica polígonos CAP malformados ou inválidos antes do reparo."""
-    avisos = []
-    numero = 0
-    for info in alert.findall("c:info", NS):
-        if now is not None and not info_is_current(info, now)[0]:
+def diagnose_invalid_polygons(
+    alert: ET.Element, now: datetime | None = None
+) -> list[str]:
+    """Diagnose malformed or invalid CAP polygons before geometry repair."""
+    warnings = []
+    number = 0
+    for info in alert.findall("c:info", XML_NAMESPACES):
+        if now is not None and not is_info_current(info, now)[0]:
             continue
-        for node in info.findall(".//c:polygon", NS):
-            numero += 1
-            coords = []
+        for node in info.findall(".//c:polygon", XML_NAMESPACES):
+            number += 1
+            coordinates = []
             try:
                 pairs = (node.text or "").split()
                 if len(pairs) < 4:
                     raise ValueError("menos de quatro pares de coordenadas")
                 for pair in pairs:
-                    partes = pair.split(",")
-                    if len(partes) != 2:
+                    parts = pair.split(",")
+                    if len(parts) != 2:
                         raise ValueError("par de coordenadas inválido")
-                    lat, lon = (float(parte) for parte in partes)
+                    lat, lon = (float(part) for part in parts)
                     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
                         raise ValueError("coordenada fora dos limites WGS84")
-                    coords.append((lon, lat))
-                if coords[0] != coords[-1]:
+                    coordinates.append((lon, lat))
+                if coordinates[0] != coordinates[-1]:
                     raise ValueError("anel de coordenadas não fechado")
-                original = Polygon(coords)
+                original = Polygon(coordinates)
             except (ValueError, TypeError) as exc:
-                avisos.append(
-                    f"polígono CAP #{numero} não interpretável ({exc}); "
+                warnings.append(
+                    f"polígono CAP #{number} não interpretável ({exc}); "
                     "geometria ignorada no cruzamento"
                 )
                 continue
 
             if not original.is_valid:
-                repaired = polygon_from_cap(node.text or "")
+                repaired = parse_cap_polygon(node.text or "")
                 if repaired is None:
-                    avisos.append(
-                        f"polígono CAP #{numero} inválido "
+                    warnings.append(
+                        f"polígono CAP #{number} inválido "
                         f"({explain_validity(original)}); reparo falhou e geometria foi ignorada"
                     )
                 else:
-                    avisos.append(
-                        f"polígono CAP #{numero} inválido "
+                    warnings.append(
+                        f"polígono CAP #{number} inválido "
                         f"({explain_validity(original)}); geometria reparada com make_valid"
                     )
             elif original.is_empty or original.area == 0:
-                avisos.append(
-                    f"polígono CAP #{numero} degenerado; geometria ignorada no cruzamento"
+                warnings.append(
+                    f"polígono CAP #{number} degenerado; geometria ignorada no cruzamento"
                 )
-    return avisos
+    return warnings
 
-def avisos_metadados_geograficos(alert):
-    """Sinaliza metadados IBGE incompatíveis com os estados monitorados, sem filtrar alertas."""
-    ufs_monitoradas = {codigo[:2] for codigo in MUNICIPIOS}
-    avisos = []
+def diagnose_geographic_metadata(alert: ET.Element) -> list[str]:
+    """Report IBGE metadata that conflicts with monitored states without filtering alerts."""
+    monitored_states = {code[:2] for code in MUNICIPALITIES}
+    warnings = []
 
-    for area in alert.findall(".//c:area", NS):
-        area_desc = area.findtext("c:areaDesc", default="", namespaces=NS).strip()
-        codigos = []
-        for geocode in area.findall("c:geocode", NS):
-            nome = geocode.findtext("c:valueName", default="", namespaces=NS).strip()
-            valor = geocode.findtext("c:value", default="", namespaces=NS).strip()
-            if nome.upper() == "IBGE" and valor.isdigit() and len(valor) >= 2:
-                codigos.append(valor)
+    for area in alert.findall(".//c:area", XML_NAMESPACES):
+        area_description = area.findtext(
+            "c:areaDesc", default="", namespaces=XML_NAMESPACES
+        ).strip()
+        codes = []
+        for geocode in area.findall("c:geocode", XML_NAMESPACES):
+            name = geocode.findtext("c:valueName", default="", namespaces=XML_NAMESPACES).strip()
+            value = geocode.findtext("c:value", default="", namespaces=XML_NAMESPACES).strip()
+            if name.upper() == "IBGE" and value.isdigit() and len(value) >= 2:
+                codes.append(value)
 
-        ufs_codificadas = {codigo[:2] for codigo in codigos}
-        if codigos and ufs_codificadas.isdisjoint(ufs_monitoradas):
-            avisos.append(
-                f"metadados administrativos: areaDesc={area_desc or 'não informado'}; "
-                f"códigos IBGE={', '.join(codigos)} apontam para UFs fora do conjunto "
-                f"monitorado ({', '.join(sorted(ufs_monitoradas))}); isso não invalida "
+        encoded_states = {code[:2] for code in codes}
+        if codes and encoded_states.isdisjoint(monitored_states):
+            warnings.append(
+                f"metadados administrativos: areaDesc={area_description or 'não informado'}; "
+                f"códigos IBGE={', '.join(codes)} apontam para UFs fora do conjunto "
+                f"monitorado ({', '.join(sorted(monitored_states))}); isso não invalida "
                 "a interseção geométrica com municípios vizinhos"
             )
 
-    return avisos
+    return warnings
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Cruza alertas CAP atuais com seis municípios da região de Ituverava."
     )
@@ -254,72 +131,73 @@ def main(argv=None):
     )
     parser.add_argument(
         "--limites",
+        dest="boundaries",
         help="caminho para um GeoJSON municipal local; sem esta opção, consulta o IBGE",
     )
     args = parser.parse_args(argv)
 
     try:
-        root = carregar_feed(args.feed)
+        root = load_cap_feed(args.feed)
     except (ET.ParseError, OSError, ValueError, RuntimeError) as exc:
-        fonte = args.feed if args.feed else FEED_URL
-        raise SystemExit(f"Não foi possível carregar o feed CAP ({fonte}): {exc}") from exc
+        source = args.feed if args.feed else CAP_FEED_URL
+        raise SystemExit(f"Não foi possível carregar o feed CAP ({source}): {exc}") from exc
 
     try:
-        limites = carregar_limites(args.limites)
+        boundaries = load_municipal_boundaries(args.boundaries)
     except Exception as exc:
         raise SystemExit(f"Falha ao carregar limites municipais do IBGE: {exc}") from exc
 
-    agora = datetime.now(timezone.utc)
-    entries = root.findall("a:entry", NS)
-    alertas, expirados = active_alert_entries(root, agora)
+    now = datetime.now(timezone.utc)
+    entries = root.findall("a:entry", XML_NAMESPACES)
+    alerts, expired_count = get_active_alert_entries(root, now)
 
-    achados = {}
-    avisos_por_alerta = {}
-    circulos = 0
-    alertas_com_geometria_problemática = 0
-    total_geometrias_problematicas = 0
-    for entry, alert in alertas:
-        ident = alert.findtext("c:identifier", default="sem-id", namespaces=NS)
-        titulo = entry.findtext("a:title", default="Sem título", namespaces=NS)
-        avisos_geometria = avisos_poligonos_invalidos(alert, agora)
-        if avisos_geometria:
-            alertas_com_geometria_problemática += 1
-            total_geometrias_problematicas += len(avisos_geometria)
+    matches = {}
+    warnings_by_alert = {}
+    circle_count = 0
+    alerts_with_problematic_geometry = 0
+    problematic_geometry_count = 0
+    for entry, alert in alerts:
+        identifier = alert.findtext("c:identifier", default="sem-id", namespaces=XML_NAMESPACES)
+        title = entry.findtext("a:title", default="Sem título", namespaces=XML_NAMESPACES)
+        geometry_warnings = diagnose_invalid_polygons(alert, now)
+        if geometry_warnings:
+            alerts_with_problematic_geometry += 1
+            problematic_geometry_count += len(geometry_warnings)
 
-        cidades, _expirados_do_alerta, circulos_do_alerta = intersecting_municipalities(
-            alert, limites, MUNICIPIOS, agora
+        cities, _, alert_circle_count = find_intersecting_municipalities(
+            alert, boundaries, MUNICIPALITIES, now
         )
-        circulos += circulos_do_alerta
-        if cidades:
-            achados[ident] = (titulo, sorted(cidades))
-            avisos = list(avisos_geometria)
-            avisos.extend(avisos_metadados_geograficos(alert))
-            if avisos:
-                avisos_por_alerta[ident] = avisos
+        circle_count += alert_circle_count
+        if cities:
+            matches[identifier] = (title, sorted(cities))
+            warnings = list(geometry_warnings)
+            warnings.extend(diagnose_geographic_metadata(alert))
+            if warnings:
+                warnings_by_alert[identifier] = warnings
 
     print(f"Entradas no feed: {len(entries)}")
-    print(f"Alertas vigentes examinados: {len(alertas)}")
-    print(f"Alertas vigentes com interseção territorial: {len(achados)}")
+    print(f"Alertas vigentes examinados: {len(alerts)}")
+    print(f"Alertas vigentes com interseção territorial: {len(matches)}")
     print(
         "Diagnóstico CAP: "
-        f"{total_geometrias_problematicas} geometrias poligonais com problemas "
-        f"em {alertas_com_geometria_problemática} alertas vigentes; "
+        f"{problematic_geometry_count} geometrias poligonais com problemas "
+        f"em {alerts_with_problematic_geometry} alertas vigentes; "
         "detalhes listados apenas para alertas com interseção"
     )
-    for ident, (titulo, cidades) in sorted(achados.items()):
-        print(f"- {titulo} [{ident}]: {', '.join(cidades)}")
-        for aviso in avisos_por_alerta.get(ident, []):
-            print(f"  NOTA DE METADADOS/GEOMETRIA: {aviso}")
-    print(f"Blocos de informação expirados ignorados: {expirados}")
-    print(f"Áreas circulares CAP analisadas: {circulos}")
-    fonte_limites = (
-        f"GeoJSON local ({args.limites})"
-        if args.limites
+    for identifier, (title, cities) in sorted(matches.items()):
+        print(f"- {title} [{identifier}]: {', '.join(cities)}")
+        for warning in warnings_by_alert.get(identifier, []):
+            print(f"  NOTA DE METADADOS/GEOMETRIA: {warning}")
+    print(f"Blocos de informação expirados ignorados: {expired_count}")
+    print(f"Áreas circulares CAP analisadas: {circle_count}")
+    boundary_source = (
+        f"GeoJSON local ({args.boundaries})"
+        if args.boundaries
         else "API de malhas do IBGE"
     )
     print(
         "Nota: círculos são aproximados por polígonos geodésicos; "
-        f"limites municipais vêm de: {fonte_limites}."
+        f"limites municipais vêm de: {boundary_source}."
     )
 
 

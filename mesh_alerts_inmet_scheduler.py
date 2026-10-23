@@ -1,8 +1,7 @@
-"""Agendamento persistente dos boletins INMET, sem transmissão por padrão.
+"""Persistent INMET bulletin scheduling with transmission disabled by default.
 
-O estado é gravado antes de chamar o transporte para evitar retransmissões
-automáticas após uma interrupção entre envio e confirmação. Isso privilegia
-não duplicar mensagens; falhas de transporte exigem análise explícita.
+Delivery state is stored before transport invocation to prevent automatic
+retransmission after interruption. Uncertain transport failures require review.
 """
 
 from __future__ import annotations
@@ -16,9 +15,9 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from mesh_alerts_inmet import (
-    PrevisaoIndisponivelError,
-    data_local_atual,
-    gerar_mensagem_municipal,
+    ForecastUnavailableError,
+    get_local_date,
+    build_municipal_bulletin,
 )
 
 LOG = logging.getLogger(__name__)
@@ -45,10 +44,10 @@ def _connect(database: str | Path) -> sqlite3.Connection:
     return connection
 
 
-def horario_agendado(
+def get_due_schedule_slot(
     config: dict[str, Any], now: datetime | None = None
 ) -> tuple[str, str] | None:
-    """Return the latest due schedule slot within the configured recovery window."""
+    """Return the latest scheduled slot within the configured recovery window."""
     inmet = config["inmet"]
     timezone = ZoneInfo(inmet.get("fuso_horario", "America/Sao_Paulo"))
     instant = now or datetime.now(timezone)
@@ -70,28 +69,27 @@ def horario_agendado(
     return scheduled_time, period
 
 
-def periodo_agendado(config: dict[str, Any], now: datetime | None = None) -> str | None:
-    """Return the due period, including a short recovery window after restart."""
-    slot = horario_agendado(config, now)
+def get_due_period(config: dict[str, Any], now: datetime | None = None) -> str | None:
+    """Return the due period, including the recovery window after restart."""
+    slot = get_due_schedule_slot(config, now)
     return slot[1] if slot else None
 
 
-def executar_boletim(
+def process_bulletin(
     config: dict[str, Any],
     database: str | Path,
-    periodo: str,
+    period: str,
     *,
     now: datetime | None = None,
-    enviar: Transport | None = None,
-    simular: bool = True,
-    construir_mensagem: MessageBuilder | None = None,
+    transport_sender: Transport | None = None,
+    simulate: bool = True,
+    message_builder: MessageBuilder | None = None,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, int]:
-    """Process one period for all cities with persistent per-city deduplication.
+    """Process one period for all municipalities with persistent deduplication.
 
-    In simulation mode, messages are built and reported but no transport is called
-    and no delivery reservation is written. For real delivery, pass ``enviar`` and
-    explicitly set ``simular=False``.
+    Simulation builds and logs messages without invoking transport or reserving
+    deliveries. Real delivery requires a transport sender and ``simulate=False``.
     """
     inmet = config["inmet"]
     timezone = ZoneInfo(inmet.get("fuso_horario", "America/Sao_Paulo"))
@@ -99,15 +97,15 @@ def executar_boletim(
     if instant.tzinfo is None:
         instant = instant.replace(tzinfo=timezone)
     instant = instant.astimezone(timezone)
-    local_date = data_local_atual(config, instant).isoformat()
-    if periodo not in {"manha", "tarde", "noite"}:
-        raise ValueError(f"Período INMET inválido: {periodo!r}.")
-    if not simular and enviar is None:
+    local_date = get_local_date(config, instant).isoformat()
+    if period not in {"manha", "tarde", "noite"}:
+        raise ValueError(f"Período INMET inválido: {period!r}.")
+    if not simulate and transport_sender is None:
         raise ValueError("Transporte de envio obrigatório quando simular=False.")
 
-    builder = construir_mensagem or (
-        lambda municipality, period, when: gerar_mensagem_municipal(
-            municipality, period, config=config, agora=when
+    builder = message_builder or (
+        lambda municipality, period, when: build_municipal_bulletin(
+            municipality, period, config=config, now=when
         )
     )
     counts = {"prepared": 0, "sent": 0, "duplicate": 0, "unavailable": 0, "failed": 0}
@@ -121,7 +119,7 @@ def executar_boletim(
             exists = connection.execute(
                 "SELECT status, updated_at FROM inmet_bulletins "
                 "WHERE local_date=? AND period=? AND municipality_code=?",
-                (local_date, periodo, code),
+                (local_date, period, code),
             ).fetchone()
             if exists:
                 # Recover the previous delivery timestamp so a restarted process
@@ -137,14 +135,14 @@ def executar_boletim(
                 municipality_processed = True
                 continue
 
-            if not simular:
+            if not simulate:
                 delay = int(inmet.get("intervalo_entre_municipios_segundos", 30))
                 if last_delivery_time is None:
                     last_delivery = connection.execute(
                         "SELECT updated_at FROM inmet_bulletins "
                         "WHERE local_date=? AND period=? AND status IN ('reserved', 'sent', 'failed') "
                         "ORDER BY updated_at DESC LIMIT 1",
-                        (local_date, periodo),
+                        (local_date, period),
                     ).fetchone()
                     if last_delivery:
                         try:
@@ -162,8 +160,8 @@ def executar_boletim(
 
             municipality_processed = True
             try:
-                message = builder(municipality, periodo, instant)
-            except PrevisaoIndisponivelError as exc:
+                message = builder(municipality, period, instant)
+            except ForecastUnavailableError as exc:
                 LOG.warning("Previsão indisponível para %s: %s", municipality["nome"], exc)
                 counts["unavailable"] += 1
                 continue
@@ -173,25 +171,28 @@ def executar_boletim(
                 continue
 
             counts["prepared"] += 1
-            if simular:
+            if simulate:
                 LOG.info("SIMULAÇÃO: %s", message.replace("\n", " | "))
                 continue
 
-            # Reserve before external I/O: after a crash, this city is never
+            # Reserve before external I/O: after a crash, this municipality is never
             # retransmitted automatically, avoiding a duplicate radio bulletin.
             connection.execute(
                 "INSERT INTO inmet_bulletins VALUES (?, ?, ?, 'reserved', ?, NULL)",
-                (local_date, periodo, code, instant.isoformat()),
+                (local_date, period, code, instant.isoformat()),
             )
             connection.commit()
             try:
-                enviar(message)
+                transport_sender(message)
             except Exception as exc:
-                LOG.exception("Envio falhou/ficou incerto para %s; não haverá retry automático", municipality["nome"])
+                LOG.exception(
+                    "Envio falhou/ficou incerto para %s; não haverá retry automático",
+                    municipality["nome"],
+                )
                 connection.execute(
                     "UPDATE inmet_bulletins SET status='failed', updated_at=?, detail=? "
                     "WHERE local_date=? AND period=? AND municipality_code=?",
-                    (datetime.now(timezone).isoformat(), str(exc)[:500], local_date, periodo, code),
+                    (datetime.now(timezone).isoformat(), str(exc)[:500], local_date, period, code),
                 )
                 connection.commit()
                 counts["failed"] += 1
@@ -200,7 +201,7 @@ def executar_boletim(
                 connection.execute(
                     "UPDATE inmet_bulletins SET status='sent', updated_at=? "
                     "WHERE local_date=? AND period=? AND municipality_code=?",
-                    (datetime.now(timezone).isoformat(), local_date, periodo, code),
+                    (datetime.now(timezone).isoformat(), local_date, period, code),
                 )
                 connection.commit()
                 counts["sent"] += 1

@@ -1,175 +1,162 @@
 # mesh-alerts
 
-Serviço leve para cruzar alertas oficiais da Defesa Civil (CAP) com municípios configurados e preparar previsões meteorológicas do INMET para distribuição futura via Meshtastic.
+Serviço Python para identificar alertas oficiais da Defesa Civil que intersectam municípios configurados e preparar boletins de previsão do INMET para distribuição via Meshtastic.
 
-## Estado atual
+## Funcionalidades
 
-A validação regional CAP consulta o feed oficial da Defesa Civil, interpreta validade, atualizações e cancelamentos e cruza geometrias com os municípios monitorados. A previsão INMET inclui consulta, formatação compacta e agendamento persistente com modo de simulação por padrão.
+- Leitura e interpretação temporal do feed CAP da Defesa Civil, incluindo alertas, atualizações e cancelamentos.
+- Interseção geográfica com limites municipais do IBGE, usando polígonos e círculos CAP.
+- Estado persistente SQLite e fila de saída para reduzir duplicações e preservar envios de resultado incerto.
+- Consulta e formatação compacta da previsão diária do INMET por município.
+- Agendamento persistente dos boletins INMET, em simulação por padrão.
+- Instalação como pacote Python com comandos de terminal e unidades systemd de exemplo.
 
-**O agendador INMET está implementado, mas não é iniciado automaticamente pelo sistema operacional.** A execução padrão simula as mensagens e não transmite. O envio real exige a opção explícita `--send` e um destino TCP informado. Os testes automatizados usam transporte simulado e não transmitem mensagens. A previsão do INMET permanece separada dos alertas CAP.
+O projeto não consulta alertas meteorológicos do INMET. Para a parte meteorológica, usa somente a previsão do INMET.
 
-**Escopo meteorológico:** usar somente a previsão do INMET. Os alertas meteorológicos do próprio INMET não fazem parte deste projeto.
+## Requisitos
+
+- Python 3.10 ou posterior.
+- Acesso à internet para consultar as APIs oficiais.
+- Para transmissão, um dispositivo Meshtastic acessível por TCP e configuração de host, porta, canal e destino.
+
+## Instalação para desenvolvimento
+
+Na raiz do repositório:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+O pacote define estes comandos:
+
+| Comando | Função |
+| --- | --- |
+| `mesh-alerts-validate` | Consulta o feed CAP e valida as interseções geográficas |
+| `mesh-alerts-service` | Executa o serviço contínuo CAP para Meshtastic |
+| `mesh-alerts-inmet` | Executa ou agenda boletins de previsão do INMET |
+
+Também é possível invocar os módulos com `python -m mesh_alerts.region`, `python -m mesh_alerts.service` e `python -m mesh_alerts.inmet_cli`.
 
 ## Configuração
 
-Os municípios, horários, fuso horário e intervalos ficam em [config.yaml](config.yaml). A configuração inicial inclui Aramina, Buritizal, Guará, Igarapava, Ituverava e Miguelópolis.
+Edite [config.yaml](config.yaml) para definir os municípios, a região, as fontes, os parâmetros do serviço e o agendamento INMET. A configuração inicial monitora:
 
-Instale as dependências:
+| Município | Código IBGE |
+| --- | ---: |
+| Aramina | `3503000` |
+| Buritizal | `3508207` |
+| Guará | `3517703` |
+| Igarapava | `3520103` |
+| Ituverava | `3524105` |
+| Miguelópolis | `3529708` |
 
-```bash
-python3 -m pip install -r requirements.txt
-```
+Os códigos IBGE devem ser mantidos como strings de sete dígitos. A seção `meshtastic` define host TCP, porta, canal e destino; a seção `servico` define intervalo, timeouts, tentativas, banco SQLite e diretório de saída.
 
-Os horários configurados são 06:00 (manhã), 12:00 (tarde) e 18:00 (noite), no fuso `America/Sao_Paulo`. Para cada consulta, o módulo seleciona exclusivamente a data local atual e o período correspondente. Se a API não fornecer o período de hoje, a previsão é considerada indisponível; não há fallback para dias futuros.
+## Validação regional CAP
 
-O formato compacto da previsão tem duas linhas, por exemplo:
-
-```text
-ITUVERAVA/SP • MANHÃ
-Muitas nuvens com possibilidade de chuva isolada | 32/20°C | U85/50% | Vento fraco
-```
-
-O texto meteorológico é preservado conforme o campo `resumo` retornado pelo INMET. Temperaturas e umidade aparecem na ordem máxima/mínima. Campos de ícones e tendências são ignorados.
-
-Os intervalos configurados são de 3 segundos entre mensagens de um mesmo boletim e 30 segundos entre municípios. Como cada previsão compacta é uma única mensagem, os 3 segundos não se aplicam ao boletim INMET. No envio real, o agendador aguarda 30 segundos antes de processar o próximo município.
-
-## Validar a previsão localmente
-
-O módulo fornece funções para consultar e formatar previsões, mas não envia mensagens:
+Consultar o feed CAP atual e as malhas municipais atuais do IBGE:
 
 ```bash
-python3 - <<'PY'
-from mesh_alerts_config import load_configuration
-from mesh_alerts_inmet import build_municipal_bulletin
-
-config = load_configuration()
-for municipality in config["municipios"]:
-    try:
-        print(build_municipal_bulletin(municipality, "manha", config=config))
-    except Exception as error:
-        print(f'{municipality["nome"]}: previsão indisponível: {error}')
-    print()
-PY
+mesh-alerts-validate
 ```
 
-O comando consulta a previsão da manhã da data local atual para cada município. Se o INMET não fornecer esse período para hoje, imprime o motivo e não substitui a previsão por dados futuros. O comando não transmite nada pelo rádio ou MQTT.
+A validação não transmite mensagens. Ela lista os alertas vigentes que intersectam os municípios configurados e emite diagnósticos sobre geometrias CAP problemáticas e metadados geográficos incompatíveis.
 
-
-## Agendador INMET
-
-Faça uma simulação pontual do período da manhã, sem transmitir:
+Para analisar um arquivo XML CAP local:
 
 ```bash
-python3 executar_boletins_inmet.py --period manha
+mesh-alerts-validate --feed /caminho/para/defesa-civil-cap.xml
 ```
 
-Sem `--period`, o comando verifica se o horário atual corresponde a um horário agendado e encerra.
-
-Para deixar o processo verificando os horários configurados, ainda em simulação:
+Para usar uma referência GeoJSON local de limites municipais, sem consultar a API de malhas do IBGE:
 
 ```bash
-python3 executar_boletins_inmet.py --loop
+mesh-alerts-validate --boundaries tests/fixtures/ibge-sp-municipios-api.geojson
 ```
 
-O agendador consulta os horários locais 06:00, 12:00 e 18:00 e seleciona, respectivamente, manhã, tarde e noite da data atual. A janela de recuperação de 30 minutos permite retomar um ciclo após reinicialização; municípios já registrados no SQLite não são reenviados, e o intervalo restante entre transmissões é respeitado. Se o período de hoje não estiver disponível, não substitui por uma previsão futura. O estado de envios reais fica em SQLite, por data, período e município.
+Esse último comando ainda consulta o feed CAP atual. A referência GeoJSON versionada serve para validação repetível e não substitui uma atualização periódica dos limites oficiais. O acesso às fontes externas pode falhar por indisponibilidade ou timeout; nesses casos, a ferramenta informa o erro em vez de inventar ou substituir dados.
 
-### Execução contínua com systemd (simulação)
+## Serviço contínuo CAP
 
-O arquivo `deploy/systemd/mesh-alerts-inmet.service` é uma unidade de exemplo para Debian/Linux. **Ela executa em modo de simulação**: não passe `--send` nem configure transmissão real antes da validação do transporte e do rádio.
+O serviço CAP consulta as fontes, persiste o estado no SQLite e tenta enviar mensagens pendentes ao destino Meshtastic configurado. **Ao contrário do validador, esse serviço pode transmitir mensagens reais.** Revise host, porta, canal, destino e permissões antes de iniciá-lo.
 
-O exemplo pressupõe o repositório em `/opt/mesh-alerts` e uma conta de sistema chamada `mesh-alerts`. Ajuste caminhos e permissões se a instalação for diferente.
+Para executar um único ciclo de processamento:
 
 ```bash
-sudo useradd --system --home-dir /opt/mesh-alerts --shell /usr/sbin/nologin mesh-alerts
-sudo install -d -o root -g mesh-alerts -m 0750 /opt/mesh-alerts
-sudo install -d -o mesh-alerts -g mesh-alerts -m 0750 /var/lib/mesh-alerts
-sudo python3 -m venv /opt/mesh-alerts/.venv
-sudo /opt/mesh-alerts/.venv/bin/pip install -r /opt/mesh-alerts/requirements.txt
-sudo install -o root -g root -m 0644 deploy/systemd/mesh-alerts-inmet.service /etc/systemd/system/mesh-alerts-inmet.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now mesh-alerts-inmet.service
+mesh-alerts-service --once
 ```
 
-Antes de executar esses comandos, coloque o código do projeto em `/opt/mesh-alerts` e confirme que a conta de serviço pode ler o código, a configuração e o ambiente virtual. O diretório de estado é criado pelo systemd em `/var/lib/mesh-alerts`.
-
-Verifique o serviço e os logs:
+Para execução contínua:
 
 ```bash
-systemctl status mesh-alerts-inmet.service
-journalctl -u mesh-alerts-inmet.service -f
+mesh-alerts-service
 ```
 
-Para interromper e desabilitar o serviço:
+O banco e o diretório de saída são configurados em `config.yaml`; variáveis de ambiente podem sobrescrever esses valores. Para implantação com systemd, use caminhos absolutos graváveis pelo usuário de serviço, como `/var/lib/mesh-alerts/alerts.sqlite3` e `/var/lib/mesh-alerts/output`.
+
+A fila persistente evita enfileiramentos duplicados e não repete automaticamente uma transmissão cujo resultado ficou incerto. Isso reduz duplicações, mas não garante entrega exatamente uma vez. Confirme manualmente qualquer item marcado como incerto antes de decidir se deve ser reenviado.
+
+## Boletins de previsão INMET
+
+Os horários padrão são 06:00 (manhã), 12:00 (tarde) e 18:00 (noite), no fuso `America/Sao_Paulo`. O agendador seleciona apenas a previsão da data local atual e do período correspondente. Se a API não fornecer o período de hoje, a previsão é considerada indisponível; não há fallback para dias futuros.
+
+Simular um boletim pontual, sem transmitir:
 
 ```bash
-sudo systemctl disable --now mesh-alerts-inmet.service
+mesh-alerts-inmet --period manha
 ```
 
-O serviço é configurado intencionalmente sem `--send`; portanto, a execução contínua não transmite mensagens. Habilitar envio real exige editar a unidade explicitamente e validar antes host, porta, canal, destino e comportamento do transporte.
-
-
-**Somente para habilitar transmissão real via TCP**, informe o host do dispositivo Meshtastic e a opção explícita `--send`:
+Executar o agendador continuamente, ainda em simulação:
 
 ```bash
-python3 executar_boletins_inmet.py --loop --send --tcp-host 192.0.2.10
+mesh-alerts-inmet --loop
 ```
 
-O endereço `192.0.2.10` é apenas um exemplo reservado para documentação. Substitua-o pelo endereço TCP real do dispositivo Meshtastic e ajuste porta, canal e destino conforme a sua instalação. A reserva persistente é gravada antes da tentativa de envio para evitar retransmissão automática após uma interrupção. Se o transporte falhar ou o resultado ficar incerto, o boletim daquele município não é reenviado automaticamente; confira o estado e decida manualmente. Isso privilegia evitar duplicatas, mas não garante entrega exatamente uma vez.
-
-Não foi feito teste de transmissão física ou MQTT nesta etapa. O agendador não altera a lógica dos alertas CAP nem consulta alertas meteorológicos do INMET.
-
-## Teste regional CAP
-
-O script `testar_alertas_regiao_ituverava.py` consulta o feed CAP oficial da Defesa Civil, carrega as malhas municipais do IBGE e lista alertas com interseção territorial.
-
-Fonte CAP:
-
-`https://idapfile.mdr.gov.br/idap/api/rss/cap`
-
-Execute usando dados atuais:
+O envio real exige a opção explícita `--send` e um host TCP informado. Exemplo ilustrativo, usando um endereço reservado para documentação:
 
 ```bash
-python3 testar_alertas_regiao_ituverava.py
+mesh-alerts-inmet --period manha --send --tcp-host 192.0.2.10
 ```
 
-Para analisar uma amostra XML já salva, sem buscar o feed CAP:
+Substitua o endereço de exemplo pelo endereço real do dispositivo Meshtastic e confirme porta, canal e destino. Não habilite transmissão real antes de validar o transporte e o comportamento no ambiente pretendido.
+
+O estado do agendador INMET é persistido em SQLite por data, período e município. Uma falha ou resultado incerto de transporte não provoca reenvio automático. O arquivo `deploy/systemd/mesh-alerts-inmet.service` é configurado intencionalmente em modo de simulação, sem `--send`.
+
+## Implantação com systemd
+
+As unidades de exemplo estão em:
+
+- `deploy/mesh-alerts.service`: serviço contínuo CAP, com envio pelo Meshtastic configurado.
+- `deploy/systemd/mesh-alerts-inmet.service`: agendador INMET em modo de simulação.
+
+As unidades pressupõem o projeto em `/opt/mesh-alerts`, um ambiente virtual em `/opt/mesh-alerts/.venv` e uma conta de sistema `mesh-alerts`. Instale o pacote no ambiente virtual, revise `config.yaml` e configure o arquivo de ambiente do serviço CAP a partir de `deploy/mesh-alerts.env.example` em `/etc/mesh-alerts/mesh-alerts.env`.
+
+O systemd cria `/var/lib/mesh-alerts` para o estado persistente. Confirme que a configuração, o código e o ambiente virtual são legíveis pela conta de serviço e que apenas os diretórios de estado precisam de escrita.
+
+Antes de ativar uma unidade, revise seu conteúdo e confirme se o serviço pode transmitir. O serviço INMET permanece em simulação por padrão. A unidade CAP não é um modo de simulação.
+
+## Testes e CI
+
+Execute a suíte local:
 
 ```bash
-python3 testar_alertas_regiao_ituverava.py --feed /caminho/para/defesa-civil-cap.xml
+python -m unittest discover -s tests -v
 ```
 
-Sem `--limites`, a malha municipal é consultada ao vivo na API do IBGE. Com `--limites`, o script usa explicitamente um GeoJSON local fornecido pelo operador. O acesso ao feed pode falhar por indisponibilidade da fonte ou da conexão; o script informa o erro e não substitui os dados por uma amostra fictícia.
+Os testes unitários não acessam a rede nem transmitem mensagens. O GitHub Actions verifica Python 3.10 a 3.13, compila os módulos, executa os testes, verifica dependências e constrói e instala o pacote.
 
-Os códigos IBGE configurados são:
+O workflow de validação CAP consulta o feed oficial ao vivo e cruza os alertas com a referência GeoJSON versionada. A disponibilidade da API de malhas do IBGE é sondada separadamente e não bloqueia essa validação, porque o endpoint pode expirar no ambiente de CI. Isso não comprova a disponibilidade atual da API de malhas no ambiente de implantação.
 
-| Município | Código |
-|---|---:|
-| Aramina | 3503000 |
-| Buritizal | 3508207 |
-| Guará | 3517703 |
-| Igarapava | 3520103 |
-| Ituverava | 3524105 |
-| Miguelópolis | 3529708 |
+## Limitações conhecidas
 
-A interpretação temporal CAP considera `effective` e `expires`; um `onset` futuro não desativa o aviso. Atualizações e cancelamentos referenciados são tratados. Os cruzamentos consideram códigos IBGE, polígonos e círculos, com diagnósticos para geometrias problemáticas e metadados administrativos incompatíveis.
-
-## Testes
-
-Execute os testes unitários sem acessar a rede:
-
-```bash
-python3 -m unittest discover -s tests -v
-```
-
-Os testes cobrem interpretação CAP, validade temporal, geometria, atualizações/cancelamentos, seleção estrita da data e período INMET, formatação compacta, configuração, recuperação do agendador, pacing e prevenção de reenvio automático. O workflow `Python unit tests` executa os testes unitários sem depender das APIs externas.
-
-O workflow `Live CAP validation with IBGE reference data` consulta o feed CAP ao vivo e cruza os alertas com a referência GeoJSON do IBGE registrada em `tests/fixtures/ibge-sp-municipios-api.geojson`, evitando que indisponibilidade temporária da API de malhas impeça essa validação. Para testar a consulta atual ao IBGE, execute o script sem `--limites`. A referência tem metadados de origem e data de coleta em `tests/fixtures/ibge-sp-municipios-api.metadata.json`; ela não substitui uma atualização oficial periódica dos limites.
-
-## Próximas etapas
-
-- Integrar futuramente a saída CAP com transporte, sem alterar as regras já testadas.
-- Validar a execução no ambiente local e confirmar o CI antes de qualquer teste físico. Nenhuma transmissão física foi testada nesta etapa.
+- A validação de CI usa uma referência GeoJSON versionada; os limites devem ser atualizados periodicamente a partir da fonte oficial.
+- A disponibilidade de CAP, IBGE e INMET depende de serviços externos.
+- Não há confirmação de teste de transmissão física ou MQTT nesta etapa.
+- O envio via Meshtastic depende da conectividade TCP e das configurações do dispositivo.
 
 ## Licença
 
-Consulte [LICENSE](LICENSE).
+Distribuído sob a licença MIT. Consulte [LICENSE](LICENSE).

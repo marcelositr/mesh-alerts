@@ -216,6 +216,13 @@ def carregar_limites_com_cache(
         cache_file = Path(cache_path)
         if not cache_file.is_file():
             raise
+        cache_age_seconds = time.time() - cache_file.stat().st_mtime
+        max_cache_age_seconds = 365 * 24 * 60 * 60
+        if cache_age_seconds > max_cache_age_seconds:
+            raise RuntimeError(
+                f"IBGE indisponível ({live_error}) e cache municipal excede "
+                f"a idade máxima de 365 dias: {cache_file}"
+            ) from live_error
         try:
             boundaries = carregar_limites_de_arquivo(cache_file, municipios)
         except Exception as cache_error:

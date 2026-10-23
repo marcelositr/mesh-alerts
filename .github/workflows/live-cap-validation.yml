@@ -1,6 +1,8 @@
 name: Live CAP and IBGE validation
 
 on:
+  push:
+    branches: ["work/integrate-python-package"]
   workflow_dispatch:
   schedule:
     - cron: "17 */6 * * *"

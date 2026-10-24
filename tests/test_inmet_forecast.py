@@ -68,10 +68,10 @@ class InmetForecastTests(unittest.TestCase):
         self.assertEqual(
             messages,
             (
-                "MESH ALERTS | ITUVERAVA/SP | MANHÃ\\n"
+                "MESH ALERTS | ITUVERAVA/SP | MANHÃ\n"
                 "Muitas nuvens com possibilidade de chuva isolada",
-                "Temperatura: 32°C / 20°C\\n"
-                "Umidade: 85% / 50%\\n"
+                "Temperatura: 32°C / 20°C\n"
+                "Umidade: 85% / 50%\n"
                 "Vento: fraco (NE-N)",
             ),
         )
@@ -79,8 +79,8 @@ class InmetForecastTests(unittest.TestCase):
             format_bulletin_message(self.municipality, "manha", self.forecast),
             messages[0],
         )
-        self.assertNotIn("cod_icone", "\\n".join(messages))
-        self.assertNotIn("tendência", "\\n".join(messages).lower())
+        self.assertNotIn("cod_icone", "\n".join(messages))
+        self.assertNotIn("tendência", "\n".join(messages).lower())
 
     def test_optional_fields_are_omitted_not_rendered_as_none(self):
         messages = format_bulletin_messages(
@@ -88,7 +88,7 @@ class InmetForecastTests(unittest.TestCase):
             "noite",
             {"resumo": "Céu claro", "int_vento": ""},
         )
-        self.assertEqual(messages, ("MESH ALERTS | ITUVERAVA/SP | NOITE\\nCéu claro",))
+        self.assertEqual(messages, ("MESH ALERTS | ITUVERAVA/SP | NOITE\nCéu claro",))
 
     def test_local_date_uses_configured_brazil_timezone(self):
         config = load_configuration()

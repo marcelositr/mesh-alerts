@@ -106,7 +106,7 @@ def format_bulletin_messages(
         raise ForecastUnavailableError("INMET retornou um resumo vazio para o período.")
 
     header_message = (
-        f"MESH ALERTS | {name.upper()}/{state} | {PERIOD_LABELS[period]}\\n"
+        f"MESH ALERTS | {name.upper()}/{state} | {PERIOD_LABELS[period]}\n"
         f"{summary}"
     )
 
@@ -132,7 +132,7 @@ def format_bulletin_messages(
         details.append(f"Direção do vento: {direction}")
 
     if details:
-        return header_message, "\\n".join(details)
+        return header_message, "\n".join(details)
     return (header_message,)
 
 
@@ -143,6 +143,7 @@ def format_bulletin_message(
 ) -> str:
     """Return only the first message for callers that need the summary."""
     return format_bulletin_messages(municipality, period, forecast)[0]
+
 
 def build_municipal_bulletin(
     municipality: dict[str, str],

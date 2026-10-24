@@ -40,7 +40,10 @@ class InmetSchedulerTests(unittest.TestCase):
         self.temp.cleanup()
 
     def builder(self, municipality, period, now):
-        return f'{municipality["nome"]} {period} {now:%Y-%m-%d}'
+        return (
+            f'MESH ALERTS | {municipality["nome"].upper()}/SP | {period.upper()}\nResumo',
+            "Temperatura: 20°C / 10°C\nUmidade: 80% / 40%\nVento: fraco (N)",
+        )
 
     def test_schedule_recovers_only_inside_configured_window(self):
         self.assertEqual(get_due_period(self.config, self.now), "manha")
@@ -92,8 +95,10 @@ class InmetSchedulerTests(unittest.TestCase):
         )
         self.assertEqual(first["sent"], 2)
         self.assertEqual(second["duplicate"], 2)
-        self.assertEqual(len(calls), 2)
-        self.assertEqual(delays, [30])
+        self.assertEqual(len(calls), 4)
+        self.assertTrue(calls[0].startswith("MESH ALERTS |"))
+        self.assertTrue(calls[1].startswith("Temperatura:"))
+        self.assertEqual(delays, [3, 30, 3])
 
     def test_restart_waits_remaining_interval_after_previous_city_delivery(self):
         self.database.parent.mkdir(parents=True, exist_ok=True)
@@ -122,7 +127,7 @@ class InmetSchedulerTests(unittest.TestCase):
         )
         self.assertEqual(result["duplicate"], 1)
         self.assertEqual(result["sent"], 1)
-        self.assertEqual(delays, [25])
+        self.assertEqual(delays, [25, 3])
 
     def test_restart_paces_each_new_city_after_the_previous_delivery(self):
         self.config["municipios"].append(
@@ -154,7 +159,7 @@ class InmetSchedulerTests(unittest.TestCase):
         )
         self.assertEqual(result["duplicate"], 1)
         self.assertEqual(result["sent"], 2)
-        self.assertEqual(delays, [25, 30])
+        self.assertEqual(delays, [25, 3, 30, 3])
 
     def test_unavailable_forecast_does_not_skip_city_pacing(self):
         delays = []
@@ -176,7 +181,7 @@ class InmetSchedulerTests(unittest.TestCase):
         )
         self.assertEqual(result["unavailable"], 1)
         self.assertEqual(result["sent"], 1)
-        self.assertEqual(delays, [30])
+        self.assertEqual(delays, [30, 3])
 
     def test_failed_transport_is_not_retried_automatically(self):
         calls = []

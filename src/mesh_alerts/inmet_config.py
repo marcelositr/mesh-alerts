@@ -48,6 +48,11 @@ def load_configuration(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]
     inmet = config.get("inmet")
     if not isinstance(inmet, dict):
         raise ValueError("A configuração precisa conter a seção 'inmet'.")
+    inmet.setdefault("canal", 1)
+    channel = inmet["canal"]
+    if isinstance(channel, bool) or not isinstance(channel, int) or not 0 <= channel <= 7:
+        raise ValueError("inmet.canal deve ser um inteiro entre 0 e 7.")
+
     schedule = inmet.get("horarios")
     if not isinstance(schedule, dict) or not schedule:
         raise ValueError("A seção inmet.horarios precisa ser um mapa de horários.")

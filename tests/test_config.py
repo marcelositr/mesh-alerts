@@ -14,6 +14,8 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(len(municipalities), 6)
         self.assertEqual(municipalities["3524105"], "Ituverava")
         self.assertEqual(config["meshtastic"]["porta"], 4403)
+        self.assertEqual(config["meshtastic"]["canal"], 2)
+        self.assertEqual(config["inmet"]["canal"], 1)
 
     def test_missing_file_has_actionable_error(self):
         with self.assertRaisesRegex(ConfigError, "não encontrado"):
@@ -55,6 +57,13 @@ class ConfigurationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ConfigError, "meshtastic.canal"):
+                load_config(path)
+
+    def test_inmet_channel_outside_supported_range_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.yaml"
+            path.write_text(yaml.safe_dump({"inmet": {"canal": 8}}), encoding="utf-8")
+            with self.assertRaisesRegex(ConfigError, "inmet.canal"):
                 load_config(path)
 
     def test_invalid_inmet_timezone_is_rejected(self):

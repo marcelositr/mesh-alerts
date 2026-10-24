@@ -30,7 +30,7 @@ municipios:
 meshtastic:
   host: "meshtastic-node.local"
   porta: 4403
-  canal: 0
+  canal: 2
   destino: "^all"
 
 servico:
@@ -48,6 +48,7 @@ fontes:
   malhas_ibge: "https://servicodados.ibge.gov.br/api/v3/malhas/municipios"
 
 inmet:
+  canal: 1
   previsao_url: "https://apiprevmet3.inmet.gov.br/previsao"
   fuso_horario: "America/Sao_Paulo"
   timeout_segundos: 30

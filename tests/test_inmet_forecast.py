@@ -92,8 +92,18 @@ class InmetForecastTests(unittest.TestCase):
             config["inmet"]["horarios"],
             {"06:00": "manha", "12:00": "tarde", "18:00": "noite"},
         )
+        self.assertEqual(config["inmet"]["canal"], 1)
         self.assertEqual(config["inmet"]["intervalo_entre_mensagens_segundos"], 3)
         self.assertEqual(config["inmet"]["intervalo_entre_municipios_segundos"], 30)
+
+    def test_config_rejects_invalid_channel_index(self):
+        config = load_configuration()
+        config["inmet"]["canal"] = 8
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "invalid.yaml"
+            path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "inmet.canal"):
+                load_configuration(path)
 
     def test_config_rejects_invalid_schedule(self):
         config = load_configuration()

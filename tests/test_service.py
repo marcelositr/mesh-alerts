@@ -24,6 +24,11 @@ FEED = """<?xml version="1.0" encoding="UTF-8"?>
       <cap:msgType>Alert</cap:msgType>
       <cap:info>
         <cap:headline>Defesa Civil: Chuva forte</cap:headline>
+        <cap:event>CHUVA FORTE</cap:event>
+        <cap:severity>Severe</cap:severity>
+        <cap:urgency>Expected</cap:urgency>
+        <cap:certainty>Likely</cap:certainty>
+        <cap:senderName>Defesa Civil Estadual</cap:senderName>
         <cap:description>Possibilidade de alagamentos.</cap:description>
         <cap:instruction>Evite áreas alagadas.</cap:instruction>
         <cap:effective>2026-10-22T10:00:00Z</cap:effective>
@@ -51,19 +56,36 @@ class MeshAlertsServiceTests(unittest.TestCase):
                 "mesh_alerts.service.intersecting_municipalities",
                 return_value=({"Ituverava"}, 0, 0),
             ):
-                first = process_feed(root, store, {}, NOW, output_dir, "^all")
-                second = process_feed(root, store, {}, NOW, output_dir, "^all")
+                first = process_feed(root, store, {}, NOW, output_dir, "^all", region_uf="SP")
+                second = process_feed(root, store, {}, NOW, output_dir, "^all", region_uf="SP")
 
             self.assertEqual(first["queued"], 1)
             self.assertEqual(second["duplicate"], 1)
-            self.assertEqual(len(store.list_outbox()), 1)
-            txt_files = list(output_dir.glob("*.txt"))
-            self.assertEqual(len(txt_files), 1)
-            message = txt_files[0].read_text(encoding="utf-8").strip()
-            self.assertTrue(message.startswith("Mesh Alerts | Ituverava: Chuva forte"))
-            self.assertNotIn("Defesa Civil:", message)
-            self.assertIn("Possibilidade de alagamentos.", message)
-            self.assertIn("Orientação: Evite áreas alagadas.", message)
+            queued = store.list_outbox()
+            self.assertEqual(len(queued), 4)
+            self.assertEqual(
+                [item["message_text"] for item in queued],
+                [
+                    "MESH ALERTS | ITUVERAVA/SP",
+                    "Chuva forte",
+                    "Severe / Expected / Likely",
+                    "Orientação: Evite áreas alagadas.",
+                ],
+            )
+            txt_files = sorted(output_dir.glob("*.txt"))
+            self.assertEqual(len(txt_files), 4)
+            self.assertEqual(
+                [path.read_text(encoding="utf-8").strip() for path in txt_files],
+                [item["message_text"] for item in queued],
+            )
+            self.assertNotIn("Defesa Civil:", "\n".join(item["message_text"] for item in queued))
+            payload = store.get_alert("civil.defesa@example.gov.br", "service-alert-001")
+            import json
+            saved_payload = json.loads(payload["payload_json"])
+            self.assertEqual(saved_payload["severity"], "Severe")
+            self.assertEqual(saved_payload["urgency"], "Expected")
+            self.assertEqual(saved_payload["certainty"], "Likely")
+            self.assertEqual(saved_payload["senderName"], "Defesa Civil Estadual")
 
 
 if __name__ == "__main__":

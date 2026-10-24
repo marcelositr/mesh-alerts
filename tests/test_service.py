@@ -48,7 +48,10 @@ class MeshAlertsServiceTests(unittest.TestCase):
         self.assertNotIn("..", name)
 
     def test_cancel_updates_state_without_broadcasting_cancel_message(self):
-        cancel_entry = """  <entry>
+        cancel_feed = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:cap="urn:oasis:names:tc:emergency:cap:1.2">
+  <entry>
     <title>Cancelamento do alerta regional de teste</title>
     <cap:alert>
       <cap:identifier>service-cancel-001</cap:identifier>
@@ -59,18 +62,26 @@ class MeshAlertsServiceTests(unittest.TestCase):
       <cap:references>civil.defesa@example.gov.br,service-alert-001,2026-10-22T11:00:00Z</cap:references>
     </cap:alert>
   </entry>
+</feed>
 """
         with tempfile.TemporaryDirectory() as directory:
-            root = ET.fromstring(FEED.replace("</feed>", cancel_entry + "</feed>"))
+            alert_root = ET.fromstring(FEED)
+            cancel_root = ET.fromstring(cancel_feed)
             store = AlertStateStore(Path(directory) / "state.sqlite3")
             output_dir = Path(directory) / "output"
             with patch(
                 "mesh_alerts.service.intersecting_municipalities",
                 return_value=({"Ituverava"}, 0, 0),
             ):
-                counts = process_feed(root, store, {}, NOW, output_dir, "^all", region_uf="SP")
+                alert_counts = process_feed(
+                    alert_root, store, {}, NOW, output_dir, "^all", region_uf="SP"
+                )
+                cancel_counts = process_feed(
+                    cancel_root, store, {}, NOW, output_dir, "^all", region_uf="SP"
+                )
 
-            self.assertEqual(counts["queued"], 1)
+            self.assertEqual(alert_counts["queued"], 1)
+            self.assertEqual(cancel_counts["cancelled"], 1)
             previous = store.get_alert("civil.defesa@example.gov.br", "service-alert-001")
             cancellation = store.get_alert("civil.defesa@example.gov.br", "service-cancel-001")
             self.assertEqual(previous["lifecycle_state"], "cancelled")

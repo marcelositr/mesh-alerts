@@ -61,14 +61,13 @@ class InmetForecastTests(unittest.TestCase):
                 self.data, "3524105", "tarde", date(2026, 10, 23)
             )
 
-    def test_compact_message_is_two_lines_and_uses_max_then_min(self):
+    def test_compact_message_is_one_line_and_uses_max_then_min(self):
         message = format_bulletin_message(self.municipality, "manha", self.forecast)
         self.assertEqual(
             message,
-            "ITUVERAVA/SP • MANHÃ\n"
-            "Muitas nuvens com possibilidade de chuva isolada | 32/20°C | U85/50% | Vento fraco",
+            "ITUVERAVA/SP • MANHÃ | Muitas nuvens com possibilidade de chuva isolada | 32/20°C | U85/50% | Vento fraco",
         )
-        self.assertEqual(len(message.splitlines()), 2)
+        self.assertEqual(len(message.splitlines()), 1)
         self.assertNotIn("cod_icone", message)
         self.assertNotIn("tendência", message.lower())
 
@@ -78,7 +77,7 @@ class InmetForecastTests(unittest.TestCase):
             "noite",
             {"resumo": "Céu claro", "int_vento": ""},
         )
-        self.assertEqual(message, "ITUVERAVA/SP • NOITE\nCéu claro")
+        self.assertEqual(message, "ITUVERAVA/SP • NOITE | Céu claro")
 
     def test_local_date_uses_configured_brazil_timezone(self):
         config = load_configuration()

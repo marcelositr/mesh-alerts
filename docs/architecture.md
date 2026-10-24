@@ -10,7 +10,7 @@ O `mesh-alerts` contém três fluxos operacionais: validação pontual de alerta
 2. `cap.py` interpreta os dados CAP, valida a vigência temporal e determina a interseção geográfica com os municípios configurados.
 3. O comando `mesh-alerts-validate` apresenta o resultado sem transmitir mensagens.
 
-No serviço contínuo, `service.py` usa o mesmo processamento regional, registra o ciclo de vida dos alertas e prepara mensagens para os municípios atingidos. As mensagens usam o prefixo `Mesh Alerts | município(s):`, preservam o título/headline do CAP e removem apenas o rótulo redundante inicial `Defesa Civil:`, quando presente.
+No serviço contínuo, `service.py` usa o mesmo processamento regional, registra o ciclo de vida dos alertas e prepara mensagens separadas para os municípios atingidos: identificação municipal (`MESH ALERTS | MUNICÍPIO/UF`), headline CAP sem o rótulo redundante inicial `Defesa Civil:` e classificação CAP (`severity / urgency / certainty`). Uma quarta mensagem de orientação só é acrescentada quando a instrução contém frases acionáveis que não aparecem no headline/description; links e orientações repetidas não são enviados como mensagem extra. Os campos CAP completos continuam preservados no estado persistente para auditoria.
 
 ### Saída do serviço CAP
 

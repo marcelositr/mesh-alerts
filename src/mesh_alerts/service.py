@@ -181,18 +181,8 @@ def process_feed(
         message: str | list[str] | None = None
         if msg_type in {"Alert", "Update"} and matches_region:
             message = _make_messages(alert, cities, infos, message_limit, region_uf)
-        elif msg_type == "Cancel":
-            previous_titles = []
-            for ref_sender, ref_identifier in refs:
-                previous = store.get_alert(ref_sender, ref_identifier)
-                if previous and previous["matches_region"]:
-                    try:
-                        previous_payload = json.loads(previous["payload_json"])
-                        previous_titles.append(previous_payload.get("title") or ref_identifier)
-                    except (TypeError, ValueError):
-                        previous_titles.append(ref_identifier)
-            if previous_titles:
-                message = ("Mesh Alerts | CANCELADO: " + ", ".join(previous_titles))[:message_limit]
+        # CAP Cancel messages update internal lifecycle state and invalidate pending
+        # notifications, but intentionally do not generate a Meshtastic broadcast.
         if isinstance(message, list):
             for index, part in enumerate(message, start=1):
                 _write_text_file(output_dir, sender, identifier, part, index)

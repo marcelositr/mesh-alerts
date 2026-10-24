@@ -56,7 +56,7 @@ class MeshAlertsServiceTests(unittest.TestCase):
       <cap:sent>2026-10-22T12:00:00Z</cap:sent>
       <cap:status>Actual</cap:status>
       <cap:msgType>Cancel</cap:msgType>
-      <cap:references>civil.defesa@example.gov.br service-alert-001 2026-10-22T11:00:00Z</cap:references>
+      <cap:references>civil.defesa@example.gov.br,service-alert-001,2026-10-22T11:00:00Z</cap:references>
     </cap:alert>
   </entry>
 """

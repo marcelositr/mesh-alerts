@@ -47,6 +47,41 @@ class MeshAlertsServiceTests(unittest.TestCase):
         self.assertNotIn("/", name)
         self.assertNotIn("..", name)
 
+    def test_cancel_updates_state_without_broadcasting_cancel_message(self):
+        cancel_entry = """  <entry>
+    <title>Cancelamento do alerta regional de teste</title>
+    <cap:alert>
+      <cap:identifier>service-cancel-001</cap:identifier>
+      <cap:sender>civil.defesa@example.gov.br</cap:sender>
+      <cap:sent>2026-10-22T12:00:00Z</cap:sent>
+      <cap:status>Actual</cap:status>
+      <cap:msgType>Cancel</cap:msgType>
+      <cap:references>civil.defesa@example.gov.br service-alert-001 2026-10-22T11:00:00Z</cap:references>
+    </cap:alert>
+  </entry>
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = ET.fromstring(FEED.replace("</feed>", cancel_entry + "</feed>"))
+            store = AlertStateStore(Path(directory) / "state.sqlite3")
+            output_dir = Path(directory) / "output"
+            with patch(
+                "mesh_alerts.service.intersecting_municipalities",
+                return_value=({"Ituverava"}, 0, 0),
+            ):
+                counts = process_feed(root, store, {}, NOW, output_dir, "^all", region_uf="SP")
+
+            self.assertEqual(counts["queued"], 1)
+            previous = store.get_alert("civil.defesa@example.gov.br", "service-alert-001")
+            cancellation = store.get_alert("civil.defesa@example.gov.br", "service-cancel-001")
+            self.assertEqual(previous["lifecycle_state"], "cancelled")
+            self.assertEqual(cancellation["lifecycle_state"], "cancelled")
+            outbox = store.list_outbox()
+            self.assertEqual(len(outbox), 4)
+            self.assertTrue(all(item["action"] == "alert" for item in outbox))
+            self.assertTrue(all(item["status"] == "failed" for item in outbox))
+            self.assertEqual(len(list(output_dir.glob("*.txt"))), 4)
+            self.assertFalse(any("CANCELADO" in path.read_text(encoding="utf-8") for path in output_dir.glob("*.txt")))
+
     def test_reprocessing_feed_does_not_enqueue_duplicate(self):
         with tempfile.TemporaryDirectory() as directory:
             root = ET.fromstring(FEED)

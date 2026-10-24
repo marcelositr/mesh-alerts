@@ -23,7 +23,7 @@ FEED = """<?xml version="1.0" encoding="UTF-8"?>
       <cap:status>Actual</cap:status>
       <cap:msgType>Alert</cap:msgType>
       <cap:info>
-        <cap:headline>Chuva forte</cap:headline>
+        <cap:headline>Defesa Civil: Chuva forte</cap:headline>
         <cap:description>Possibilidade de alagamentos.</cap:description>
         <cap:instruction>Evite áreas alagadas.</cap:instruction>
         <cap:effective>2026-10-22T10:00:00Z</cap:effective>
@@ -59,7 +59,11 @@ class MeshAlertsServiceTests(unittest.TestCase):
             self.assertEqual(len(store.list_outbox()), 1)
             txt_files = list(output_dir.glob("*.txt"))
             self.assertEqual(len(txt_files), 1)
-            self.assertIn("Chuva forte", txt_files[0].read_text(encoding="utf-8"))
+            message = txt_files[0].read_text(encoding="utf-8").strip()
+            self.assertTrue(message.startswith("Mesh Alerts | Ituverava: Chuva forte"))
+            self.assertNotIn("Defesa Civil:", message)
+            self.assertIn("Possibilidade de alagamentos.", message)
+            self.assertIn("Orientação: Evite áreas alagadas.", message)
 
 
 if __name__ == "__main__":

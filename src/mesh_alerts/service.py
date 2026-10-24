@@ -55,7 +55,12 @@ def _make_message(alert: ET.Element, cities: list[str], infos: list[ET.Element],
     headline = _text(info, "c:headline") or _text(info, "c:event") or "Alerta da Defesa Civil"
     severity, urgency, certainty = (_text(info, f"c:{field}") for field in ("severity", "urgency", "certainty"))
     description, instruction, expires = (_text(info, f"c:{field}") for field in ("description", "instruction", "expires"))
-    parts = [f"DEFESA CIVIL: {headline}", f"Região: {', '.join(cities)}"]
+    # The CAP provider sometimes repeats its source name in the headline.
+    # Remove only that redundant leading label; preserve the actual headline.
+    prefix = "Defesa Civil:"
+    if headline.casefold().startswith(prefix.casefold()):
+        headline = headline[len(prefix):].lstrip()
+    parts = [f"Mesh Alerts | {', '.join(cities)}: {headline}"]
     qualifiers = [value for value in (severity, urgency, certainty) if value and value != "Unknown"]
     if qualifiers:
         parts.append(" / ".join(qualifiers))
@@ -132,7 +137,7 @@ def process_feed(
                     except (TypeError, ValueError):
                         previous_titles.append(ref_identifier)
             if previous_titles:
-                message = ("DEFESA CIVIL: CANCELADO " + ", ".join(previous_titles))[:message_limit]
+                message = ("Mesh Alerts | CANCELADO: " + ", ".join(previous_titles))[:message_limit]
         if message:
             _write_text_file(output_dir, sender, identifier, message)
         result = store.process_cap_alert(

@@ -10,6 +10,7 @@ from mesh_alerts.inmet import (
     ForecastUnavailableError,
     get_local_date,
     format_bulletin_message,
+    format_bulletin_messages,
     select_forecast_period,
 )
 
@@ -29,6 +30,7 @@ class InmetForecastTests(unittest.TestCase):
             "umidade_max": 85,
             "umidade_min": 50,
             "int_vento": "Fracos",
+            "dir_vento": "NE-N",
             "cod_icone": "36",
             "cod_temp_max_tende_icone": "86",
         }
@@ -61,24 +63,32 @@ class InmetForecastTests(unittest.TestCase):
                 self.data, "3524105", "tarde", date(2026, 10, 23)
             )
 
-    def test_compact_message_is_two_lines_and_uses_max_then_min(self):
-        message = format_bulletin_message(self.municipality, "manha", self.forecast)
+    def test_bulletin_is_split_into_summary_and_details_messages(self):
+        messages = format_bulletin_messages(self.municipality, "manha", self.forecast)
         self.assertEqual(
-            message,
-            "ITUVERAVA/SP • MANHÃ\n"
-            "Muitas nuvens com possibilidade de chuva isolada | 32/20°C | U85/50% | Vento fraco",
+            messages,
+            (
+                "MESH ALERTS | ITUVERAVA/SP | MANHÃ\\n"
+                "Muitas nuvens com possibilidade de chuva isolada",
+                "Temperatura: 32°C / 20°C\\n"
+                "Umidade: 85% / 50%\\n"
+                "Vento: fraco (NE-N)",
+            ),
         )
-        self.assertEqual(len(message.splitlines()), 2)
-        self.assertNotIn("cod_icone", message)
-        self.assertNotIn("tendência", message.lower())
+        self.assertEqual(
+            format_bulletin_message(self.municipality, "manha", self.forecast),
+            messages[0],
+        )
+        self.assertNotIn("cod_icone", "\\n".join(messages))
+        self.assertNotIn("tendência", "\\n".join(messages).lower())
 
     def test_optional_fields_are_omitted_not_rendered_as_none(self):
-        message = format_bulletin_message(
+        messages = format_bulletin_messages(
             self.municipality,
             "noite",
             {"resumo": "Céu claro", "int_vento": ""},
         )
-        self.assertEqual(message, "ITUVERAVA/SP • NOITE\nCéu claro")
+        self.assertEqual(messages, ("MESH ALERTS | ITUVERAVA/SP | NOITE\\nCéu claro",))
 
     def test_local_date_uses_configured_brazil_timezone(self):
         config = load_configuration()

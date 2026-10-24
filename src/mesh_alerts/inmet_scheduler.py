@@ -22,7 +22,7 @@ from .inmet import (
 
 LOG = logging.getLogger(__name__)
 Transport = Callable[[str], None]
-MessageBuilder = Callable[[dict[str, Any], str, datetime], str]
+MessageBuilder = Callable[[dict[str, Any], str, datetime], str | tuple[str, ...]]
 
 
 def _connect(database: str | Path) -> sqlite3.Connection:
@@ -160,7 +160,18 @@ def process_bulletin(
 
             municipality_processed = True
             try:
-                message = builder(municipality, period, instant)
+                built_messages = builder(municipality, period, instant)
+                if isinstance(built_messages, str):
+                    messages = (built_messages,)
+                else:
+                    messages = tuple(
+                        message for message in built_messages
+                        if isinstance(message, str) and message.strip()
+                    )
+                if not messages:
+                    raise ForecastUnavailableError(
+                        "INMET não retornou mensagens para o boletim."
+                    )
             except ForecastUnavailableError as exc:
                 LOG.warning("Previsão indisponível para %s: %s", municipality["nome"], exc)
                 counts["unavailable"] += 1
@@ -172,7 +183,8 @@ def process_bulletin(
 
             counts["prepared"] += 1
             if simulate:
-                LOG.info("SIMULAÇÃO: %s", message.replace("\n", " | "))
+                for message in messages:
+                    LOG.info("SIMULAÇÃO: %s", message.replace("\n", " | "))
                 continue
 
             # Reserve before external I/O: after a crash, this municipality is never
@@ -183,7 +195,14 @@ def process_bulletin(
             )
             connection.commit()
             try:
-                transport_sender(message)
+                message_interval = int(
+                    inmet.get("intervalo_entre_mensagens_segundos", 0)
+                )
+                for index, message in enumerate(messages):
+                    if index > 0 and message_interval > 0:
+                        sleep(float(message_interval))
+                        instant += timedelta(seconds=message_interval)
+                    transport_sender(message)
             except Exception as exc:
                 LOG.exception(
                     "Envio falhou/ficou incerto para %s; não haverá retry automático",

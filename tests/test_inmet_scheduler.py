@@ -209,6 +209,39 @@ class InmetSchedulerTests(unittest.TestCase):
         self.assertEqual(second["duplicate"], 2)
         self.assertEqual(len(calls), 2)
 
+    def test_second_message_failure_is_not_retried_automatically(self):
+        self.config["municipios"] = self.config["municipios"][:1]
+        calls = []
+
+        def fail_on_second(message):
+            calls.append(message)
+            if len(calls) == 2:
+                raise OSError("transport interrupted on second message")
+
+        first = process_bulletin(
+            self.config,
+            self.database,
+            "manha",
+            now=self.now,
+            transport_sender=fail_on_second,
+            simulate=False,
+            message_builder=self.builder,
+            sleep=lambda _: None,
+        )
+        second = process_bulletin(
+            self.config,
+            self.database,
+            "manha",
+            now=self.now,
+            transport_sender=calls.append,
+            simulate=False,
+            message_builder=self.builder,
+            sleep=lambda _: None,
+        )
+        self.assertEqual(first["failed"], 1)
+        self.assertEqual(second["duplicate"], 1)
+        self.assertEqual(len(calls), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

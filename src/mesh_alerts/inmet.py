@@ -87,12 +87,12 @@ def select_forecast_period(
     return period_forecast
 
 
-def format_bulletin_message(
+def format_bulletin_messages(
     municipality: dict[str, str],
     period: str,
     forecast: dict[str, Any],
-) -> str:
-    """Format a compact two-line bulletin while preserving the INMET summary."""
+) -> tuple[str, ...]:
+    """Format an INMET bulletin as a summary message and a details message."""
     if period not in PERIOD_LABELS:
         raise ValueError(f"Período inválido: {period!r}.")
 
@@ -105,24 +105,44 @@ def format_bulletin_message(
     if not summary:
         raise ForecastUnavailableError("INMET retornou um resumo vazio para o período.")
 
-    parts = [summary]
+    header_message = (
+        f"MESH ALERTS | {name.upper()}/{state} | {PERIOD_LABELS[period]}\\n"
+        f"{summary}"
+    )
+
+    details = []
     max_temp = forecast.get("temp_max")
     min_temp = forecast.get("temp_min")
     if max_temp is not None and min_temp is not None:
-        parts.append(f"{max_temp}/{min_temp}°C")
+        details.append(f"Temperatura: {max_temp}°C / {min_temp}°C")
 
     max_humidity = forecast.get("umidade_max")
     min_humidity = forecast.get("umidade_min")
     if max_humidity is not None and min_humidity is not None:
-        parts.append(f"U{max_humidity}/{min_humidity}%")
+        details.append(f"Umidade: {max_humidity}% / {min_humidity}%")
 
     wind = str(forecast.get("int_vento") or "").strip()
+    direction = str(forecast.get("dir_vento") or "").strip()
     if wind:
         wind = WIND_INTENSITY_LABELS.get(wind.casefold(), wind.casefold())
-        parts.append(f"Vento {wind}")
+        if direction:
+            wind = f"{wind} ({direction})"
+        details.append(f"Vento: {wind}")
+    elif direction:
+        details.append(f"Direção do vento: {direction}")
 
-    return f"{name.upper()}/{state} • {PERIOD_LABELS[period]}\n" + " | ".join(parts)
+    if details:
+        return header_message, "\\n".join(details)
+    return (header_message,)
 
+
+def format_bulletin_message(
+    municipality: dict[str, str],
+    period: str,
+    forecast: dict[str, Any],
+) -> str:
+    """Return only the first message for callers that need the summary."""
+    return format_bulletin_messages(municipality, period, forecast)[0]
 
 def build_municipal_bulletin(
     municipality: dict[str, str],
@@ -130,11 +150,11 @@ def build_municipal_bulletin(
     forecast_date: date | None = None,
     config: dict[str, Any] | None = None,
     now: datetime | None = None,
-) -> str:
-    """Retrieve and format today's forecast for a municipality and period."""
+) -> tuple[str, ...]:
+    """Retrieve and format today's forecast as separate messages."""
     config = config or load_configuration()
     selected_date = forecast_date or get_local_date(config, now)
     code = str(municipality["codigo_ibge"])
     data = fetch_forecast(code, config)
     forecast = select_forecast_period(data, code, period, selected_date)
-    return format_bulletin_message(municipality, period, forecast)
+    return format_bulletin_messages(municipality, period, forecast)

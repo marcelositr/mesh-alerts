@@ -45,7 +45,7 @@ def main(argv=None) -> int:
         "--tcp-host", help="host do dispositivo Meshtastic TCP (obrigatório com --send)"
     )
     parser.add_argument("--tcp-port", type=int, default=4403)
-    parser.add_argument("--channel-index", type=int, default=0)
+    parser.add_argument("--channel-index", type=int, default=None)
     parser.add_argument("--destination", default="^all")
     parser.add_argument(
         "--period", choices=("manha", "tarde", "noite"),
@@ -58,8 +58,6 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if not 1 <= args.tcp_port <= 65535:
         parser.error("--tcp-port deve estar entre 1 e 65535")
-    if not 0 <= args.channel_index <= 7:
-        parser.error("--channel-index deve estar entre 0 e 7")
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -68,13 +66,16 @@ def main(argv=None) -> int:
     if args.period and args.loop:
         parser.error("--period é para execução pontual; remova --loop")
     config = load_configuration(args.config)
+    channel_index = args.channel_index if args.channel_index is not None else config["inmet"]["canal"]
+    if not 0 <= channel_index <= 7:
+        parser.error("--channel-index/inmet.canal deve estar entre 0 e 7")
     interface = None
     sender = None
     if args.send:
         if not args.tcp_host:
             parser.error("--tcp-host é obrigatório com --send")
         interface, sender = _transport_tcp(
-            args.tcp_host, args.tcp_port, args.channel_index, args.destination
+            args.tcp_host, args.tcp_port, channel_index, args.destination
         )
 
     timezone = ZoneInfo(config["inmet"].get("fuso_horario", "America/Sao_Paulo"))

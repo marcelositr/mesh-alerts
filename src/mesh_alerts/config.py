@@ -21,7 +21,7 @@ DEFAULTS: dict[str, Any] = {
         {"nome": "Ituverava", "codigo_ibge": "3524105"},
         {"nome": "Miguelópolis", "codigo_ibge": "3529708"},
     ],
-    "meshtastic": {"host": "meshtastic-node.local", "porta": 4403, "canal": 0, "destino": "^all"},
+    "meshtastic": {"host": "meshtastic-node.local", "porta": 4403, "canal": 2, "destino": "^all"},
     "servico": {
         "intervalo_segundos": 60,
         "banco": "data/mesh-alerts.sqlite3",
@@ -37,6 +37,7 @@ DEFAULTS: dict[str, Any] = {
         "malhas_ibge": "https://servicodados.ibge.gov.br/api/v3/malhas/municipios",
     },
     "inmet": {
+        "canal": 1,
         "previsao_url": "https://apiprevmet3.inmet.gov.br/previsao",
         "fuso_horario": "America/Sao_Paulo",
         "timeout_segundos": 30,
@@ -158,6 +159,10 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
     inmet = config["inmet"]
     if not isinstance(inmet, dict):
         raise ConfigError("'inmet' deve ser uma seção de configuração.")
+
+    inmet["canal"] = _positive_int(inmet.get("canal"), "inmet.canal", 0)
+    if inmet["canal"] > 7:
+        raise ConfigError("'inmet.canal' deve estar entre 0 e 7.")
 
     forecast_url = _required_text(inmet.get("previsao_url"), "inmet.previsao_url")
     if not forecast_url.startswith("https://"):

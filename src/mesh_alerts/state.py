@@ -159,7 +159,7 @@ class AlertStateStore:
         expires_at: str | None = None,
         matches_region: bool,
         is_current: bool = True,
-        message_text: str | None = None,
+        message_text: str | Sequence[str] | None = None,
         destination: str = "^all",
         now: datetime | None = None,
     ) -> str:
@@ -272,8 +272,12 @@ class AlertStateStore:
             if is_expired:
                 return "expired"
 
+            messages = (
+                [message_text] if isinstance(message_text, str)
+                else list(message_text or ())
+            )
             should_queue = (
-                bool(message_text)
+                bool(messages)
                 and (
                     (msg_type in ("Alert", "Update") and bool(matches_region))
                     or (msg_type == "Cancel" and affected_local_alert)
@@ -281,20 +285,25 @@ class AlertStateStore:
             )
             if should_queue:
                 action = msg_type.lower()
-                message_key = _digest(f"{sender}\n{identifier}\n{action}")
-                connection.execute(
-                    """INSERT OR IGNORE INTO outbox
-                       (message_key, sender, identifier, action, destination,
-                        message_text, status, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)""",
-                    (
-                        message_key, sender, identifier, action, destination,
-                        message_text, now_text, now_text,
-                    ),
-                )
-                return "queued" if connection.execute(
-                    "SELECT changes()"
-                ).fetchone()[0] else "recorded"
+                queued = 0
+                for index, message in enumerate(messages, start=1):
+                    if not isinstance(message, str) or not message.strip():
+                        continue
+                    # A CAP alert can now enqueue several independently delivered
+                    # Meshtastic packets while preserving idempotency per packet.
+                    message_key = _digest(f"{sender}\n{identifier}\n{action}\n{index}")
+                    connection.execute(
+                        """INSERT OR IGNORE INTO outbox
+                           (message_key, sender, identifier, action, destination,
+                            message_text, status, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)""",
+                        (
+                            message_key, sender, identifier, action, destination,
+                            message, now_text, now_text,
+                        ),
+                    )
+                    queued += connection.execute("SELECT changes()").fetchone()[0]
+                return "queued" if queued else "recorded"
             return "cancelled" if msg_type == "Cancel" else "recorded"
 
     def invalidate_stale_pending(self, *, now: datetime | None = None) -> int:

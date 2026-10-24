@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import logging
 import os
+import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -50,27 +50,79 @@ def _safe_filename(sender: str, identifier: str) -> str:
     return f"{digest}.txt"
 
 
-def _make_message(alert: ET.Element, cities: list[str], infos: list[ET.Element], limit: int = 220) -> str:
+def _actionable_instruction(instruction: str, headline: str, description: str, limit: int) -> str | None:
+    """Return concise, actionable instruction sentences absent from the alert text."""
+    if not instruction:
+        return None
+    source = " ".join((headline, description)).casefold()
+    sentences = re.split(r"(?<=[.!?])\s+|\n+", instruction.strip())
+    actions = re.compile(
+        r"\b(evite|evitar|não|nao|beba|busque|procure|mantenha|afaste|ligue|acione|"
+        r"permaneça|permanece|siga|fique|retire|vá|va|saia|proteja|avoid|seek|call|"
+        r"stay|follow|keep|do not)\b",
+        re.IGNORECASE,
+    )
+    selected = []
+    seen = set()
+    for sentence in sentences:
+        sentence = re.sub(r"https?://\S+", "", sentence).strip(" \t\r\n-•")
+        sentence = re.sub(r"\s+", " ", sentence).strip()
+        normalized = sentence.casefold().strip(" .;:")
+        if len(sentence) < 20 or not actions.search(sentence) or not normalized:
+            continue
+        if normalized in source or normalized in seen:
+            continue
+        if any(term in normalized for term in (
+            "saiba mais", "classificação do alerta", "classificacao do alerta",
+            "significado das cores", "defesa civil estadual",
+        )):
+            continue
+        seen.add(normalized)
+        selected.append(sentence)
+    if not selected:
+        return None
+    return ("Orientação: " + " ".join(selected))[:limit]
+
+
+def _make_messages(
+    alert: ET.Element, cities: list[str], infos: list[ET.Element],
+    limit: int = 220, region_uf: str = "",
+) -> list[str]:
+    """Build separate identity, headline, classification, and optional guidance messages."""
     info = infos[0]
     headline = _text(info, "c:headline") or _text(info, "c:event") or "Alerta da Defesa Civil"
-    severity, urgency, certainty = (_text(info, f"c:{field}") for field in ("severity", "urgency", "certainty"))
-    description, instruction, expires = (_text(info, f"c:{field}") for field in ("description", "instruction", "expires"))
-    parts = [f"DEFESA CIVIL: {headline}", f"Região: {', '.join(cities)}"]
-    qualifiers = [value for value in (severity, urgency, certainty) if value and value != "Unknown"]
+    severity, urgency, certainty = (
+        _text(info, f"c:{field}") for field in ("severity", "urgency", "certainty")
+    )
+    description = _text(info, "c:description")
+    instruction = _text(info, "c:instruction")
+
+    # Remove only the redundant leading provider label; preserve the remaining headline.
+    prefix = "Defesa Civil:"
+    if headline.casefold().startswith(prefix.casefold()):
+        headline = headline[len(prefix):].lstrip()
+
+    labels = [f"{city.upper()}/{region_uf.upper()}" if region_uf else city.upper() for city in cities]
+    messages = [
+        f"MESH ALERTS | {', '.join(labels)}"[:limit],
+        headline[:limit],
+    ]
+    qualifiers = [value for value in (severity, urgency, certainty) if value and value.casefold() != "unknown"]
     if qualifiers:
-        parts.append(" / ".join(qualifiers))
-    if description:
-        parts.append(description)
-    if instruction:
-        parts.append(f"Orientação: {instruction}")
-    if expires:
-        parts.append(f"Validade: {expires}")
-    return " | ".join(" ".join(part.split()) for part in parts)[:limit]
+        messages.append(" / ".join(qualifiers)[:limit])
+
+    guidance = _actionable_instruction(instruction, headline, description, limit)
+    if guidance:
+        messages.append(guidance)
+    return messages
 
 
-def _write_text_file(output_dir: Path, sender: str, identifier: str, message: str) -> None:
+def _write_text_file(
+    output_dir: Path, sender: str, identifier: str, message: str, message_index: int = 1,
+) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    destination = output_dir / _safe_filename(sender, identifier)
+    base = Path(_safe_filename(sender, identifier))
+    destination = output_dir / f"{base.stem}-{message_index:02d}{base.suffix}"
     temporary = destination.with_suffix(".txt.tmp")
     temporary.write_text(message + "\n", encoding="utf-8")
     temporary.replace(destination)
@@ -79,7 +131,7 @@ def _write_text_file(output_dir: Path, sender: str, identifier: str, message: st
 def process_feed(
     root: ET.Element, store: AlertStateStore, boundaries, now: datetime,
     output_dir: Path, destination: str, municipalities: dict[str, str] | None = None,
-    message_limit: int = 220,
+    message_limit: int = 220, region_uf: str = "",
 ) -> dict[str, int]:
     if municipalities is None:
         municipalities = municipality_map(load_config())
@@ -116,24 +168,24 @@ def process_feed(
             "headline": _text(infos[0], "c:headline") if infos else "",
             "description": _text(infos[0], "c:description") if infos else "",
             "instruction": _text(infos[0], "c:instruction") if infos else "",
+            "event": _text(infos[0], "c:event") if infos else "",
+            "severity": _text(infos[0], "c:severity") if infos else "",
+            "urgency": _text(infos[0], "c:urgency") if infos else "",
+            "certainty": _text(infos[0], "c:certainty") if infos else "",
+            "senderName": _text(infos[0], "c:senderName") if infos else "",
+            "onset": _text(infos[0], "c:onset") if infos else "",
+            "msgType": msg_type, "identifier": identifier,
             "cities": cities, "sent": _text(alert, "c:sent"), "expires": expires_at,
         }
-        message = None
+        message: str | list[str] | None = None
         if msg_type in {"Alert", "Update"} and matches_region:
-            message = _make_message(alert, cities, infos, message_limit)
-        elif msg_type == "Cancel":
-            previous_titles = []
-            for ref_sender, ref_identifier in refs:
-                previous = store.get_alert(ref_sender, ref_identifier)
-                if previous and previous["matches_region"]:
-                    try:
-                        previous_payload = json.loads(previous["payload_json"])
-                        previous_titles.append(previous_payload.get("title") or ref_identifier)
-                    except (TypeError, ValueError):
-                        previous_titles.append(ref_identifier)
-            if previous_titles:
-                message = ("DEFESA CIVIL: CANCELADO " + ", ".join(previous_titles))[:message_limit]
-        if message:
+            message = _make_messages(alert, cities, infos, message_limit, region_uf)
+        # CAP Cancel messages update internal lifecycle state and invalidate pending
+        # notifications, but intentionally do not generate a Meshtastic broadcast.
+        if isinstance(message, list):
+            for index, part in enumerate(message, start=1):
+                _write_text_file(output_dir, sender, identifier, part, index)
+        elif message:
             _write_text_file(output_dir, sender, identifier, message)
         result = store.process_cap_alert(
             sender=sender, identifier=identifier, sent=_text(alert, "c:sent"),
@@ -213,8 +265,8 @@ def main(argv=None) -> int:
     log_level = args.log_level or service["nivel_log"]
     if not 1 <= port <= 65535:
         parser.error("porta TCP deve estar entre 1 e 65535")
-    if channel < 0:
-        parser.error("índice do canal não pode ser negativo")
+    if not 0 <= channel <= 7:
+        parser.error("índice do canal deve estar entre 0 e 7")
     if interval < 10:
         parser.error("--interval/servico.intervalo_segundos deve ser de pelo menos 10 segundos")
     if args.resolve_uncertain is None and not host:
@@ -259,7 +311,7 @@ def main(argv=None) -> int:
                 )
                 counts = process_feed(
                     root, store, boundaries, now, output_path, destination,
-                    municipalities, service["limite_mensagem_caracteres"],
+                    municipalities, service["limite_mensagem_caracteres"], config["regiao"]["uf"],
                 )
                 LOG.info("Feed CAP processado: %s", counts)
             except Exception:

@@ -21,7 +21,7 @@ No serviço contínuo, `service.py` usa o mesmo processamento regional, registra
 ### Previsão INMET
 
 1. `inmet_config.py` carrega e valida a configuração dos municípios e dos horários.
-2. `inmet.py` consulta a API de previsão do INMET e formata o boletim para a data local e o período solicitados.
+2. `inmet.py` consulta a API de previsão do INMET e formata cada boletim em uma única linha: município/UF, período, resumo, temperaturas máxima/mínima, umidades máxima/mínima e intensidade do vento.
 3. `inmet_scheduler.py` controla os horários e o estado persistente dos boletins.
 4. `inmet_cli.py` oferece execução pontual ou contínua. A simulação é o padrão; a transmissão exige `--send` e um host TCP.
 5. O índice do canal INMET vem de `inmet.canal` (padrão `1`), com sobrescrita por `--channel-index`. O serviço CAP usa `meshtastic.canal` (padrão `2`), com sobrescritas próprias por CLI ou variável de ambiente.

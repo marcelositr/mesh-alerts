@@ -92,7 +92,7 @@ def format_bulletin_message(
     period: str,
     forecast: dict[str, Any],
 ) -> str:
-    """Format a compact two-line bulletin while preserving the INMET summary."""
+    """Format a compact single-line bulletin for Meshtastic."""
     if period not in PERIOD_LABELS:
         raise ValueError(f"Período inválido: {period!r}.")
 
@@ -121,7 +121,7 @@ def format_bulletin_message(
         wind = WIND_INTENSITY_LABELS.get(wind.casefold(), wind.casefold())
         parts.append(f"Vento {wind}")
 
-    return f"{name.upper()}/{state} • {PERIOD_LABELS[period]}\n" + " | ".join(parts)
+    return f"{name.upper()}/{state} • {PERIOD_LABELS[period]} | " + " | ".join(parts)
 
 
 def build_municipal_bulletin(

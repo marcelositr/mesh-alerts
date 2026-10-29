@@ -185,6 +185,22 @@ class AlertStateStoreTests(unittest.TestCase):
         self.assertEqual(old["lifecycle_state"], "active")
         self.assertEqual(len(self.store.list_outbox(status="pending")), 1)
 
+    def test_reprocessing_alert_after_expiry_refreshes_state_instead_of_conflict(self):
+        self.assertEqual(self.add_alert(expires_at=EXPIRES), "queued")
+        result = self.add_alert(
+            expires_at=EXPIRES,
+            is_current=False,
+            matches_region=False,
+            message_text=None,
+            now=datetime(2026, 10, 22, 16, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual(result, "expired")
+        stored = self.store.get_alert("civil.defesa@example.gov.br", "alert-001")
+        self.assertEqual(stored["active"], 0)
+        self.assertEqual(stored["lifecycle_state"], "expired")
+        self.assertEqual(self.store.list_outbox(status="pending"), [])
+        self.assertEqual(self.store.list_outbox(status="failed")[0]["identifier"], "alert-001")
+
 
 if __name__ == "__main__":
     unittest.main()

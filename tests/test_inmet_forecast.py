@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import yaml
 from mesh_alerts.inmet_config import load_configuration
 from mesh_alerts.inmet import (
     ForecastUnavailableError,
+    fetch_forecast,
     get_local_date,
     format_bulletin_message,
     select_forecast_period,
@@ -42,6 +44,21 @@ class InmetForecastTests(unittest.TestCase):
                 "23/10/2026": {"manha": {"resumo": "PREVISÃO FUTURA"}},
             }
         }
+
+    def test_fetch_forecast_rejects_oversized_http_response(self):
+        config = {
+            "inmet": {
+                "previsao_url": "https://example.test/api",
+                "timeout_segundos": 1,
+            }
+        }
+        with patch("mesh_alerts.inmet.MAX_HTTP_RESPONSE_BYTES", 10):
+            with patch("mesh_alerts.inmet.open_http_url") as open_url:
+                response = open_url.return_value.__enter__.return_value
+                response.read.return_value = b"x" * 11
+                with self.assertRaisesRegex(ValueError, "excede o limite"):
+                    fetch_forecast("3524105", config)
+                response.read.assert_called_once_with(11)
 
     def test_selects_requested_period_from_today_only(self):
         selected = select_forecast_period(

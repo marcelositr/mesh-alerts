@@ -50,6 +50,25 @@ class CapValidationTests(unittest.TestCase):
                     )
                 response.read.assert_called_once_with(11)
 
+    def test_cap_feed_requests_gzip_and_decompresses_response(self):
+        import gzip
+
+        xml = b'<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+        compressed = gzip.compress(xml)
+        with patch("mesh_alerts.region.open_http_url") as open_url:
+            response = open_url.return_value.__enter__.return_value
+            response.read.return_value = compressed
+            root = load_cap_feed(
+                feed_url="https://example.test/cap",
+                timeout=1,
+                tentativas=1,
+            )
+
+        self.assertEqual(root.tag, "{http://www.w3.org/2005/Atom}feed")
+        request = open_url.call_args.args[0]
+        self.assertEqual(request.get_header("Accept-encoding"), "gzip")
+        response.read.assert_called_once()
+
     def test_gzip_decompression_rejects_expansion_over_configured_limit(self):
         import gzip
 
@@ -340,9 +359,16 @@ class CapValidationTests(unittest.TestCase):
         self.assertIsNotNone(polygon)
         self.assertTrue(polygon.is_valid)
         self.assertIsNone(parse_cap_polygon("bad input"))
-        self.assertIsNone(
-            parse_cap_polygon("-20.0,-47.0 -20.1,-47.0 -20.1,-47.1")
+        unclosed = parse_cap_polygon(
+            "-20.0,-47.0 -20.1,-47.0 -20.1,-47.1"
         )
+        self.assertIsNotNone(unclosed)
+        self.assertTrue(unclosed.is_valid)
+        self.assertEqual(
+            tuple(unclosed.exterior.coords[0]),
+            tuple(unclosed.exterior.coords[-1]),
+        )
+        self.assertIsNone(parse_cap_polygon("-20.0,-47.0 -20.1,-47.0"))
         self.assertIsNone(
             parse_cap_polygon(
                 "-20.0,-47.0 -20.1,-47.0 999,-47.1 -20.0,-47.0"
@@ -372,6 +398,22 @@ class CapValidationTests(unittest.TestCase):
             alert, boundaries, names, self.now
         )
         self.assertEqual(cities, {"Dentro", "Borda"})
+
+    def test_unclosed_cap_polygon_still_matches_intersecting_municipality(self):
+        alert = ET.fromstring(
+            f'<c:alert xmlns:c="{XML_NAMESPACES["c"]}"><c:info>'
+            '<c:area><c:polygon>'
+            '-20.0,-47.0 -20.1,-47.0 -20.1,-47.1'
+            '</c:polygon></c:area></c:info></c:alert>'
+        )
+        boundaries = {"3524105": box(-47.08, -20.08, -47.02, -20.02)}
+        names = {"3524105": "Ituverava"}
+
+        cities, _expired, _circles = find_intersecting_municipalities(
+            alert, boundaries, names, self.now
+        )
+
+        self.assertEqual(cities, {"Ituverava"})
 
     def test_minas_geocode_does_not_suppress_geometry_crossing_sp_municipality(self):
         alert = ET.fromstring(

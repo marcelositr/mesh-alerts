@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import io
 import json
 import sys
 import time
@@ -26,6 +27,20 @@ MUNICIPALITIES = {
     "3529708": "Miguelópolis",
 }
 IBGE_BOUNDARIES_BASE_URL = "https://servicodados.ibge.gov.br/api/v3/malhas/municipios"
+MAX_HTTP_RESPONSE_BYTES = 16 * 1024 * 1024
+MAX_LOCAL_FILE_BYTES = 16 * 1024 * 1024
+MAX_DECOMPRESSED_BYTES = 64 * 1024 * 1024
+
+
+def _decompress_gzip_limited(data: bytes) -> bytes:
+    """Decompress a gzip payload while bounding its expanded size."""
+    with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
+        result = stream.read(MAX_DECOMPRESSED_BYTES + 1)
+    if len(result) > MAX_DECOMPRESSED_BYTES:
+        raise ValueError(
+            f"Conteúdo gzip excede o limite de {MAX_DECOMPRESSED_BYTES} bytes"
+        )
+    return result
 
 
 def download_with_retries(
@@ -39,7 +54,13 @@ def download_with_retries(
     for attempt in range(1, attempts + 1):
         try:
             with open_http_url(request, timeout=timeout) as response:
-                return response.read()
+                data = response.read(MAX_HTTP_RESPONSE_BYTES + 1)
+                if len(data) > MAX_HTTP_RESPONSE_BYTES:
+                    raise ValueError(
+                        f"Resposta de {description} excede o limite de "
+                        f"{MAX_HTTP_RESPONSE_BYTES} bytes"
+                    )
+                return data
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last_error = exc
             if attempt == attempts:
@@ -106,8 +127,14 @@ def load_municipal_boundaries(
     """Load boundaries from local GeoJSON or retrieve current IBGE municipal boundaries."""
     if path:
         try:
-            geojson = json.loads(Path(path).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+            with Path(path).open("rb") as stream:
+                raw = stream.read(MAX_LOCAL_FILE_BYTES + 1)
+            if len(raw) > MAX_LOCAL_FILE_BYTES:
+                raise ValueError(
+                    f"arquivo excede o limite de {MAX_LOCAL_FILE_BYTES} bytes"
+                )
+            geojson = json.loads(raw.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise RuntimeError(f"não foi possível ler o GeoJSON local {path}: {exc}") from exc
         return load_municipal_boundaries_from_geojson(geojson)
 
@@ -123,7 +150,7 @@ def load_municipal_boundaries(
             request, f"malha municipal de {name}", attempts=3, timeout=25
         )
         if data[:2] == bytes((0x1f, 0x8b)):
-            data = gzip.decompress(data)
+            data = _decompress_gzip_limited(data)
         geojson = json.loads(data.decode("utf-8"))
         if not isinstance(geojson, dict):
             raise RuntimeError(f"Resposta GeoJSON inválida para {name}")

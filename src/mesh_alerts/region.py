@@ -26,8 +26,10 @@ MAX_LOCAL_FILE_BYTES = 16 * 1024 * 1024
 MAX_DECOMPRESSED_BYTES = 64 * 1024 * 1024
 
 
-def _read_file_limited(path, max_bytes=MAX_LOCAL_FILE_BYTES) -> bytes:
-    """Read a local input file with an explicit byte limit."""
+def _read_file_limited(path, max_bytes=None) -> bytes:
+    """Read a local input file with the current configured byte limit."""
+    if max_bytes is None:
+        max_bytes = MAX_LOCAL_FILE_BYTES
     with Path(path).open("rb") as stream:
         data = stream.read(max_bytes + 1)
     if len(data) > max_bytes:
@@ -178,7 +180,7 @@ def carregar_limites(municipios, base_url, timeout=12, tentativas=2, cache_path=
                 timeout=timeout,
             )
             if data[:2] == bytes((0x1f, 0x8b)):
-                data = gzip.decompress(data)
+                data = _decompress_gzip_limited(data)
             geojson = json.loads(data.decode("utf-8"))
             if not isinstance(geojson, dict):
                 raise RuntimeError(f"Resposta GeoJSON inválida para {nome}")

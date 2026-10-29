@@ -1,8 +1,12 @@
+import socket
 import unittest
+from unittest.mock import Mock, patch
 from urllib.request import Request
 
 from mesh_alerts.http_utils import (
+    _ValidatedHTTPConnection,
     _ValidatedRedirectHandler,
+    open_http_url,
     validate_http_url,
 )
 
@@ -48,7 +52,6 @@ class ValidateHttpUrlTests(unittest.TestCase):
         )
         self.assertEqual(redirected.full_url, "https://cdn.example.test/end")
 
-
     def test_rejects_private_loopback_and_reserved_literal_ips(self):
         for url in (
             "http://127.0.0.1/resource",
@@ -74,6 +77,49 @@ class ValidateHttpUrlTests(unittest.TestCase):
             handler.redirect_request(
                 request, None, 302, "Found", {}, "http://127.0.0.1/internal"
             )
+
+    @patch("mesh_alerts.http_utils.socket.getaddrinfo")
+    def test_rejects_hostname_resolving_to_private_ip(self, getaddrinfo):
+        getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "",
+             ("127.0.0.1", 80))
+        ]
+        with self.assertRaisesRegex(ValueError, "não público"):
+            open_http_url(Request("http://example.test/resource"), timeout=1)
+        getaddrinfo.assert_called_once()
+
+    @patch("mesh_alerts.http_utils.socket.getaddrinfo")
+    def test_rejects_mixed_public_and_private_dns_answers(self, getaddrinfo):
+        getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "",
+             ("93.184.216.34", 80)),
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "",
+             ("192.168.1.10", 80)),
+        ]
+        with self.assertRaisesRegex(ValueError, "não público"):
+            open_http_url(Request("http://example.test/resource"), timeout=1)
+        getaddrinfo.assert_called_once()
+
+    @patch("mesh_alerts.http_utils.socket.socket")
+    @patch("mesh_alerts.http_utils.socket.getaddrinfo")
+    def test_connects_to_the_exact_public_address_that_was_validated(
+        self, getaddrinfo, socket_factory
+    ):
+        getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "",
+             ("93.184.216.34", 80))
+        ]
+        fake_socket = Mock()
+        socket_factory.return_value = fake_socket
+
+        connection = _ValidatedHTTPConnection("example.test", 80, timeout=1)
+        connection.connect()
+
+        getaddrinfo.assert_called_once_with(
+            "example.test", 80, type=socket.SOCK_STREAM
+        )
+        fake_socket.connect.assert_called_once_with(("93.184.216.34", 80))
+        self.assertIs(connection.sock, fake_socket)
 
 
 if __name__ == "__main__":

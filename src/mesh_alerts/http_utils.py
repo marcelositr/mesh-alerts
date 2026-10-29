@@ -5,7 +5,6 @@ from __future__ import annotations
 import http.client
 import ipaddress
 import socket
-import ssl
 import urllib.request
 from urllib.parse import urlsplit
 from urllib.request import Request

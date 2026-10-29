@@ -3,22 +3,22 @@
 - Data: 2026-10-24
 - Branch de trabalho: `audit/full-audit-2026-10-24`
 - Escopo: revisão estática do código-fonte, testes existentes e regressões validadas pelos workflows do GitHub Actions.
-- Estado: achados priorizados e regressões principais verificadas na CI; A05 requer decisão operacional explícita antes de qualquer alteração de comportamento. Esta revisão não substitui uma avaliação independente de implantação e rede.
+- Estado: correções e regressões priorizadas verificadas nos workflows configurados; a decisão operacional de A05 foi confirmada: cancelamentos CAP não devem gerar transmissão de rádio. Esta revisão não substitui validação independente no ambiente de implantação.
 - Restrição operacional: esta auditoria não altera a branch `main`, não abre pull request e não realiza transmissão via rádio.
 
 ## Resumo executivo
 
-A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adicionadas regressões para os principais cenários. No commit `855d8d6`, os workflows de testes (Python 3.10–3.13 e build), segurança/qualidade e validação live CAP concluíram com sucesso. Isso confirma os checks configurados, não a ausência de defeitos nem a segurança de toda a infraestrutura. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adicionadas regressões para os principais cenários. No commit final `bf3b2dc`, os workflows de testes (Python 3.10–3.13 e build), segurança/qualidade e validação live CAP concluíram com sucesso. Isso confirma os checks configurados, não a ausência de defeitos nem a segurança de toda a infraestrutura. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ## Achados priorizados
 
-### A10 — Seções de configuração YAML com tipo incorreto geravam exceção não tratada [CORRIGIDO, VALIDAÇÃO CI PENDENTE]
+### A10 — Seções de configuração YAML com tipo incorreto geravam exceção não tratada [CORRIGIDO, CI PASSOU]
 - **Área:** `src/mesh_alerts/config.py` e `tests/test_config.py`.
 - **Prioridade:** P3, robustez operacional.
 - **Evidência:** se uma seção como `regiao`, `meshtastic`, `servico`, `fontes` ou `inmet` fosse configurada como lista ou escalar, a mesclagem podia substituir o objeto esperado e causar `TypeError` em vez de um erro de configuração claro.
 - **Correção aplicada:** as seções devem ser objetos YAML; entradas com tipo incorreto agora geram `ConfigError` com indicação da seção.
 - **Regressão adicionada:** teste parametrizado para os cinco tipos de seção.
-- **Validação:** os workflows estão sendo executados na branch de auditoria para o commit que inclui a regressão; registrar o resultado final após conclusão.
+- **Validação:** os workflows de testes/build, segurança/qualidade e validação live CAP passaram no commit final `bf3b2dc`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ### A01 — Configuração carregada no momento da importação [CORRIGIDO, CI PASSOU]
 - **Área:** `src/mesh_alerts/region.py`
@@ -57,13 +57,13 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - **Limitações restantes:** esta proteção não substitui controles de egress da infraestrutura, nem uma allowlist quando a aplicação deve consultar apenas serviços conhecidos. Endereços globalmente roteáveis também podem apontar para serviços sensíveis em redes com roteamento incomum; a política de rede deve continuar restrita ao necessário.
 - **Validação:** testes Python 3.10-3.13, build/teste do wheel, análise de segurança/qualidade e validação live CAP passaram no commit `6e54da2`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow; isso não equivale a uma validação ao vivo do IBGE.
 
-### A05 — Cancelamento CAP altera estado, mas não envia aviso de cancelamento pelo rádio [DECISÃO OPERACIONAL PENDENTE]
+### A05 — Cancelamento CAP altera estado, mas não envia aviso de cancelamento pelo rádio [DECISÃO CONFIRMADA: NÃO TRANSMITIR]
 - **Área:** `src/mesh_alerts/service.py` e testes do serviço.
-- **Prioridade:** decisão funcional/operacional P2.
+- **Prioridade:** decisão funcional confirmada; manter o comportamento atual.
 - **Evidência estática e regressão:** `process_feed()` não cria mensagem para `msgType=Cancel`; `tests/test_service.py::test_cancel_updates_state_without_broadcasting_cancel_message` confirma que o alerta original passa a `cancelled`, as mensagens pendentes são invalidadas e nenhum texto `CANCELADO` é produzido. Este teste fixa o comportamento atual, não decide se o produto deve transmitir um cancelamento.
 - **Impacto possível:** destinatários que já receberam o alerta podem não saber que ele foi cancelado.
 - **Recomendação:** manter o comportamento atual até que o responsável operacional confirme o requisito. Se os destinatários precisam receber revogações, especificar antes da implementação: texto inequívoco de cancelamento, identificação do alerta original, prioridade, tratamento de cancelamento recebido após envio do alerta, deduplicação e política para destinos/canais. Um aviso de cancelamento não deve ser tratado como um alerta comum nem retransmitido silenciosamente.
-- **Decisão pendente:** requisito de produto/segurança operacional. A auditoria não implementa transmissão de cancelamento sem essa definição, porque uma mudança incorreta pode confundir operadores e destinatários.
+- **Decisão confirmada pelo responsável:** cancelamentos CAP devem apenas atualizar o estado interno e invalidar notificações pendentes. Não enviar mensagem de cancelamento pelo Meshtastic. Não implementar transmissão para `msgType=Cancel`.
 
 ### A06 — Hash de deduplicação misturava conteúdo CAP com estado derivado [CORRIGIDO, CI PASSOU]
 - **Área:** `src/mesh_alerts/state.py`
@@ -121,13 +121,13 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - A03: limites de leitura HTTP, arquivo local e descompressão gzip implementados; regressões HTTP/gzip e arquivos locais adicionadas; CI passou no commit `8571233` em Python 3.10-3.13, build do pacote, segurança/qualidade e validação live CAP.
 - A04: resolução DNS validada no caminho de conexão, endereços não públicos e respostas DNS mistas rejeitados, e socket conectado ao endereço exato validado; regressões adicionadas para hostname privado, DNS misto e pinning. CI passou no commit `6e54da2`; controles de egress continuam recomendados.
 - A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
-- A02 está mitigado com consulta de status somente leitura e procedimento manual para reconciliação, sem retry automático. A05 continua aguardando decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP passaram no commit `3041ff6`. No commit `855d8d6`, os workflows configurados de testes, segurança/qualidade e live CAP passaram. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+- A02 está mitigado com consulta de status somente leitura e procedimento manual para reconciliação, sem retry automático. A05 está decidido: cancelamentos CAP não geram transmissão de rádio. A06 e A08 foram corrigidos com regressões adicionadas. No commit final `bf3b2dc`, os workflows configurados de testes/build, segurança/qualidade e validação live CAP passaram. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ## Próximos passos
 
-1. No commit `855d8d6`, a CI está verde para os workflows configurados: testes Python 3.10–3.13/build, segurança/qualidade e live CAP. `ibge-live-probe` foi ignorado, portanto não declarar validação ao vivo do IBGE.
+1. No commit final `bf3b2dc`, a CI está verde para os workflows configurados: testes Python 3.10–3.13/build, segurança/qualidade e live CAP. `ibge-live-probe` foi ignorado, portanto não declarar validação ao vivo do IBGE.
 2. A02: manter reconciliação manual de falhas/incertezas INMET; não adicionar retry automático sem idempotência ou confirmação de entrega.
-3. A05: a lógica e a regressão existentes confirmam que cancelamentos CAP atualizam o estado e invalidam pendências sem gerar transmissão. A decisão sobre adicionar um aviso de cancelamento continua pendente do responsável operacional; não mudar o protocolo de rádio sem requisito aprovado.
+3. A05: decisão confirmada: cancelamentos CAP atualizam o estado e invalidam pendências sem gerar transmissão. Não adicionar mensagem de cancelamento.
 4. Para implantação, avaliar controles de egress/allowlist e testar a política de rede no ambiente real. Não considerar validação em nível de aplicação substituta de defesa de rede.
 
 ## Limitações

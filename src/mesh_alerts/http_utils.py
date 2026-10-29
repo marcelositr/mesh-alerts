@@ -117,7 +117,6 @@ class _ValidatedHTTPSHandler(urllib.request.HTTPSHandler):
             _ValidatedHTTPSConnection,
             request,
             context=self._context,
-            check_hostname=self._check_hostname,
         )
 
 

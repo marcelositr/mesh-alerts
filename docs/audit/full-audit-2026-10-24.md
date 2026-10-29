@@ -69,13 +69,13 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Regressão coberta:** `test_conflicting_alert_does_not_overwrite_existing_text_files` compara os arquivos antes e depois do conflito.
 - **Validação:** workflow de testes passou em Python 3.10, 3.11, 3.12 e 3.13 no commit `a623675`.
 
-### A08 — Referências CAP descartavam o timestamp [CORRIGIDO, CI PENDENTE]
+### A08 — Referências CAP descartavam o timestamp [CORRIGIDO, CI PASSOU]
 - **Área:** `src/mesh_alerts/cap.py`, `src/mesh_alerts/service.py` e `src/mesh_alerts/state.py`.
 - **Prioridade original:** P2 provisória, integridade de protocolo.
 - **Evidência original:** `parse_reference_keys()` validava o terceiro componente, mas retornava apenas remetente/identificador; tanto a seleção do feed quanto a persistência perdiam o timestamp.
 - **Correção aplicada:** criado `parse_reference_records()`, que preserva o timestamp normalizado em UTC. A seleção de alertas só suprime uma mensagem quando remetente, identificador e timestamp enviado correspondem. O serviço passa as referências com timestamp ao estado persistente, que compara o horário com o registro local antes de invalidar alertas e mensagens pendentes. A API antiga que retorna pares foi mantida para compatibilidade.
 - **Regressões adicionadas:** referência no feed com timestamp divergente não suprime o alerta original; referência divergente no estado SQLite não desativa o alerta nem remove sua mensagem pendente.
-- **Validação:** aguardando workflows CI do commit que contém a correção.
+- **Validação:** testes de unidade, análise de segurança/qualidade e validação live CAP/IBGE passaram no commit `3041ff6`.
 
 ## Controles positivos observados
 
@@ -101,9 +101,9 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 ## Próximos passos
 
 1. Preservar o resultado verde da CI para A06 e A08 ao continuar alterações.
-3. Exercitar falha de transporte INMET e documentar recuperação manual, sem retransmissão silenciosa.
-4. Confirmar se cancelamentos CAP precisam ser transmitidos aos nós Meshtastic.
-5. Avaliar a necessidade operacional de bloquear redirecionamentos para hosts privados/loopback e limitar também entradas de arquivos locais.
+2. Exercitar falha de transporte INMET e documentar recuperação manual, sem retransmissão silenciosa.
+3. Confirmar se cancelamentos CAP precisam ser transmitidos aos nós Meshtastic.
+4. Avaliar a necessidade operacional de bloquear redirecionamentos para hosts privados/loopback e limitar também entradas de arquivos locais.
 
 ## Limitações
 

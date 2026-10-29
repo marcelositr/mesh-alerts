@@ -39,13 +39,15 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Regressões adicionadas:** arquivos locais de feed CAP e malha GeoJSON acima do limite são rejeitados; resposta gzip do caminho alternativo de malha municipal do IBGE também é testada contra expansão excessiva.
 - **Validação:** workflows Python unit tests (Python 3.10, 3.11, 3.12 e 3.13, incluindo build e testes do wheel), security/quality e live CAP passaram no commit `8571233`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow; não é uma validação ao vivo do IBGE.
 
-### A04 — Redirecionamentos HTTP e destinos de rede [MITIGADO PARCIALMENTE]
+### A04 — Redirecionamentos HTTP e destinos de rede [MITIGADO, CI PENDENTE]
 - **Área:** `src/mesh_alerts/http_utils.py`.
 - **Prioridade:** P2, condicionada à origem configurada.
-- **Correção aplicada anteriormente:** cada destino de redirecionamento é validado como HTTP(S), e redirecionamentos HTTPS→HTTP são recusados.
-- **Correção adicional:** URLs com credenciais embutidas e portas inválidas são recusadas; endereços IP literais não globais, incluindo privados, loopback, link-local e reservados, são bloqueados, inclusive em redirects.
-- **Regressões adicionadas:** esquemas inválidos, downgrade HTTPS, redirect HTTPS válido, IPs IPv4/IPv6 não públicos, credenciais, porta inválida e redirect para loopback.
-- **Limitação restante importante:** isso não bloqueia hostname público que resolva para IP privado/loopback nem cobre DNS rebinding. Para proteção SSRF completa, a aplicação precisa de allowlist de hosts ou resolução DNS validada ligada à conexão e controles de egress na infraestrutura.
+- **Correções aplicadas:** cada destino de redirecionamento é validado como HTTP(S), redirecionamentos HTTPS→HTTP são recusados, e URLs com credenciais embutidas, portas inválidas ou IPs literais não globais são bloqueadas.
+- **Mitigação SSRF adicional:** a resolução DNS ocorre no caminho de conexão; todas as respostas precisam ser IPs globais, e o socket conecta ao endereço exato validado, sem uma segunda resolução do hostname. Isso reduz o risco de DNS rebinding entre a validação e a conexão. Respostas DNS mistas, com endereços públicos e não públicos, são rejeitadas por inteiro.
+- **Comportamento de rede:** o opener não usa proxies configurados por variáveis de ambiente, pois um proxy faria a conexão real contornar a validação do destino. Os pedidos HTTP(S) deste módulo conectam diretamente ao endereço validado.
+- **Regressões adicionadas:** esquemas inválidos, downgrade HTTPS, redirect HTTPS válido, IPs IPv4/IPv6 não públicos, credenciais, porta inválida, redirect para loopback, hostname resolvendo para IP privado, resposta DNS mista e conexão ao sockaddr exato validado.
+- **Limitações restantes:** esta proteção não substitui controles de egress da infraestrutura, nem uma allowlist quando a aplicação deve consultar apenas serviços conhecidos. Endereços globalmente roteáveis também podem apontar para serviços sensíveis em redes com roteamento incomum; a política de rede deve continuar restrita ao necessário.
+- **Validação:** implementação e regressões adicionadas na branch de auditoria; aguardando CI no commit correspondente.
 
 ### A05 — Cancelamento CAP altera estado, mas não envia aviso de cancelamento pelo rádio
 - **Área:** `src/mesh_alerts/service.py` e testes do serviço.
@@ -97,7 +99,7 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 
 - A01: corrigido; teste de importação fora da raiz do projeto aprovado na CI.
 - A03: limites de leitura HTTP, arquivo local e descompressão gzip implementados; regressões HTTP/gzip e arquivos locais adicionadas; CI passou no commit `8571233` em Python 3.10-3.13, build do pacote, segurança/qualidade e validação live CAP.
-- A04: destinos de redirecionamento revalidados, downgrade HTTPS bloqueado e IPs literais não globais rejeitados; testes de regressão aprovados no commit `4e90017`. Restrição para hostname que resolve a IP privado e DNS rebinding ainda não implementada.
+- A04: resolução DNS validada no caminho de conexão, endereços não públicos e respostas DNS mistas rejeitados, e socket conectado ao endereço exato validado; regressões adicionadas para hostname privado, DNS misto e pinning. CI pendente; controles de egress continuam recomendados.
 - A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
 - A02 e A05 continuam pendentes de análise/decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP/IBGE passaram no commit `3041ff6`.
 
@@ -106,7 +108,7 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 1. Preservar o resultado verde da CI para A06 e A08 ao continuar alterações.
 2. Exercitar falha de transporte INMET e documentar recuperação manual, sem retransmissão silenciosa.
 3. Confirmar se cancelamentos CAP precisam ser transmitidos aos nós Meshtastic.
-4. Decidir a arquitetura de mitigação SSRF por hostname: allowlist de destinos ou resolução DNS validada e vinculada à conexão, idealmente com egress restrito. Não considerar a validação atual proteção SSRF completa.
+4. Confirmar CI do A04 e avaliar controles de egress/allowlist adequados ao ambiente de implantação. Não considerar validação em nível de aplicação substituta de defesa de rede.
 
 ## Limitações
 

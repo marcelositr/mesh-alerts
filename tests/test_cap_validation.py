@@ -70,6 +70,22 @@ class CapValidationTests(unittest.TestCase):
             root = load_cap_feed(path)
         self.assertEqual(root.tag, "{http://www.w3.org/2005/Atom}feed")
 
+    def test_local_cap_feed_file_rejects_oversized_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sample.xml"
+            path.write_bytes(b"x" * 11)
+            with patch("mesh_alerts.region.MAX_LOCAL_FILE_BYTES", 10):
+                with self.assertRaisesRegex(ValueError, "excede o limite"):
+                    load_cap_feed(path)
+
+    def test_local_boundary_file_rejects_oversized_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "boundaries.geojson"
+            path.write_bytes(b"{}" + b" " * 9)
+            with patch("mesh_alerts.region.MAX_LOCAL_FILE_BYTES", 10):
+                with self.assertRaisesRegex(RuntimeError, "excede o limite"):
+                    load_municipal_boundaries_from_file(path, {})
+
     def test_warns_when_cap_polygon_is_invalid_before_repair(self):
         alert = ET.fromstring(
             '<c:alert xmlns:c="urn:oasis:names:tc:emergency:cap:1.2"><c:info><c:area>'

@@ -2,13 +2,13 @@
 
 - Data: 2026-10-24
 - Branch de trabalho: `audit/full-audit-2026-10-24`
-- Escopo: revisão estática do código-fonte, testes existentes e checks CI previamente concluídos no commit-base.
-- Estado: revisão estática consolidada; testes dinâmicos independentes ainda pendentes.
+- Escopo: revisão estática do código-fonte, testes existentes e regressões validadas pelos workflows do GitHub Actions.
+- Estado: achados priorizados e regressões principais verificadas na CI; esta revisão não substitui uma avaliação independente de implantação e rede.
 - Restrição operacional: esta auditoria não altera a branch `main`, não abre pull request e não realiza transmissão via rádio.
 
 ## Resumo executivo
 
-A revisão identificou riscos e lacunas de comportamento que merecem testes dirigidos. Nenhum dos cenários abaixo foi reproduzido dinamicamente nesta sessão, portanto as severidades são provisórias e os itens não devem ser interpretados como vulnerabilidades exploradas. Os workflows CI anteriormente consultados passaram no commit-base, mas isso não substitui a reprodução dos cenários descritos.
+A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adicionadas regressões para os principais cenários e os workflows de testes, segurança/qualidade e validação live CAP passaram no commit `6e54da2`. Isso confirma os checks configurados, não a ausência de defeitos nem a segurança de toda a infraestrutura. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ## Achados priorizados
 
@@ -39,7 +39,7 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Regressões adicionadas:** arquivos locais de feed CAP e malha GeoJSON acima do limite são rejeitados; resposta gzip do caminho alternativo de malha municipal do IBGE também é testada contra expansão excessiva.
 - **Validação:** workflows Python unit tests (Python 3.10, 3.11, 3.12 e 3.13, incluindo build e testes do wheel), security/quality e live CAP passaram no commit `8571233`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow; não é uma validação ao vivo do IBGE.
 
-### A04 — Redirecionamentos HTTP e destinos de rede [MITIGADO, CI PENDENTE]
+### A04 — Redirecionamentos HTTP e destinos de rede [MITIGADO, CI PASSOU]
 - **Área:** `src/mesh_alerts/http_utils.py`.
 - **Prioridade:** P2, condicionada à origem configurada.
 - **Correções aplicadas:** cada destino de redirecionamento é validado como HTTP(S), redirecionamentos HTTPS→HTTP são recusados, e URLs com credenciais embutidas, portas inválidas ou IPs literais não globais são bloqueadas.
@@ -47,7 +47,7 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Comportamento de rede:** o opener não usa proxies configurados por variáveis de ambiente, pois um proxy faria a conexão real contornar a validação do destino. Os pedidos HTTP(S) deste módulo conectam diretamente ao endereço validado.
 - **Regressões adicionadas:** esquemas inválidos, downgrade HTTPS, redirect HTTPS válido, IPs IPv4/IPv6 não públicos, credenciais, porta inválida, redirect para loopback, hostname resolvendo para IP privado, resposta DNS mista e conexão ao sockaddr exato validado.
 - **Limitações restantes:** esta proteção não substitui controles de egress da infraestrutura, nem uma allowlist quando a aplicação deve consultar apenas serviços conhecidos. Endereços globalmente roteáveis também podem apontar para serviços sensíveis em redes com roteamento incomum; a política de rede deve continuar restrita ao necessário.
-- **Validação:** implementação e regressões adicionadas na branch de auditoria; aguardando CI no commit correspondente.
+- **Validação:** testes Python 3.10-3.13, build/teste do wheel, análise de segurança/qualidade e validação live CAP passaram no commit `6e54da2`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow; isso não equivale a uma validação ao vivo do IBGE.
 
 ### A05 — Cancelamento CAP altera estado, mas não envia aviso de cancelamento pelo rádio
 - **Área:** `src/mesh_alerts/service.py` e testes do serviço.
@@ -99,7 +99,7 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 
 - A01: corrigido; teste de importação fora da raiz do projeto aprovado na CI.
 - A03: limites de leitura HTTP, arquivo local e descompressão gzip implementados; regressões HTTP/gzip e arquivos locais adicionadas; CI passou no commit `8571233` em Python 3.10-3.13, build do pacote, segurança/qualidade e validação live CAP.
-- A04: resolução DNS validada no caminho de conexão, endereços não públicos e respostas DNS mistas rejeitados, e socket conectado ao endereço exato validado; regressões adicionadas para hostname privado, DNS misto e pinning. CI pendente; controles de egress continuam recomendados.
+- A04: resolução DNS validada no caminho de conexão, endereços não públicos e respostas DNS mistas rejeitados, e socket conectado ao endereço exato validado; regressões adicionadas para hostname privado, DNS misto e pinning. CI passou no commit `6e54da2`; controles de egress continuam recomendados.
 - A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
 - A02 e A05 continuam pendentes de análise/decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP/IBGE passaram no commit `3041ff6`.
 

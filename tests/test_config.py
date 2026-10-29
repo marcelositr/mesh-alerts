@@ -103,6 +103,14 @@ class ConfigurationTests(unittest.TestCase):
             with self.assertRaisesRegex(ConfigError, "desconhecidas"):
                 load_config(path)
 
+    def test_non_mapping_configuration_section_has_actionable_error(self):
+        for section in ("regiao", "meshtastic", "servico", "fontes", "inmet"):
+            with self.subTest(section=section), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "config.yaml"
+                path.write_text(yaml.safe_dump({section: ["valor inválido"]}), encoding="utf-8")
+                with self.assertRaisesRegex(ConfigError, section):
+                    load_config(path)
+
 
 if __name__ == "__main__":
     unittest.main()

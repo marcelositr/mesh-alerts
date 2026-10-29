@@ -68,13 +68,13 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Regressão coberta:** `test_conflicting_alert_does_not_overwrite_existing_text_files` compara os arquivos antes e depois do conflito.
 - **Validação:** workflow de testes passou em Python 3.10, 3.11, 3.12 e 3.13 no commit `a623675`.
 
-### A08 — Referências CAP são reduzidas a remetente/identificador, descartando o timestamp
-- **Área:** `src/mesh_alerts/cap.py` e fluxo de persistência CAP.
-- **Prioridade:** P2 provisória, integridade de protocolo.
-- **Evidência estática:** `parse_reference_keys()` valida que o terceiro componente seja um timestamp válido, mas retorna apenas o par remetente/identificador. A supressão no feed usa esse par.
-- **Impacto possível:** uma referência com timestamp que não corresponde à mensagem original pode suprimir um alerta com a mesma identidade. O caminho de persistência também recebe referências como pares, então a correção completa deve abranger ambos os caminhos, não apenas o filtro do feed.
-- **Recomendação:** preservar e comparar o timestamp da referência com o campo `sent` da mensagem referenciada; definir como tratar referências a mensagens ausentes do feed atual.
-- **Teste recomendado:** referência válida, timestamp divergente, identificador igual com remetente diferente e referência a alerta ausente do feed.
+### A08 — Referências CAP descartavam o timestamp [CORRIGIDO, CI PENDENTE]
+- **Área:** `src/mesh_alerts/cap.py`, `src/mesh_alerts/service.py` e `src/mesh_alerts/state.py`.
+- **Prioridade original:** P2 provisória, integridade de protocolo.
+- **Evidência original:** `parse_reference_keys()` validava o terceiro componente, mas retornava apenas remetente/identificador; tanto a seleção do feed quanto a persistência perdiam o timestamp.
+- **Correção aplicada:** criado `parse_reference_records()`, que preserva o timestamp normalizado em UTC. A seleção de alertas só suprime uma mensagem quando remetente, identificador e timestamp enviado correspondem. O serviço passa as referências com timestamp ao estado persistente, que compara o horário com o registro local antes de invalidar alertas e mensagens pendentes. A API antiga que retorna pares foi mantida para compatibilidade.
+- **Regressões adicionadas:** referência no feed com timestamp divergente não suprime o alerta original; referência divergente no estado SQLite não desativa o alerta nem remove sua mensagem pendente.
+- **Validação:** aguardando workflows CI do commit que contém a correção.
 
 ## Controles positivos observados
 
@@ -95,11 +95,11 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - A03: limites de leitura HTTP e descompressão gzip implementados; testes de regressão aprovados na CI.
 - A04: destinos de redirecionamento revalidados e downgrade HTTPS bloqueado; testes de regressão aprovados na CI. Restrição por host/endereço ainda não implementada.
 - A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
-- A02, A05, A06 e A08 continuam pendentes de análise/correção. Não foram alterados por ainda exigirem decisões de comportamento ou mudanças mais amplas de estado/protocolo.
+- A02, A05 e A06 continuam pendentes de análise/correção. A08 foi corrigido e tem regressões adicionadas; a validação CI está pendente.
 
 ## Próximos passos
 
-1. Reproduzir A08 com timestamp divergente e verificar seleção do feed e estado persistido.
+1. Validar via CI os testes de A08 para supressão no feed e estado SQLite.
 2. Reproduzir A06 com SQLite e validar identidade, expiração, conteúdo canônico e outbox antes de alterar a deduplicação.
 3. Exercitar falha de transporte INMET e documentar recuperação manual, sem retransmissão silenciosa.
 4. Confirmar se cancelamentos CAP precisam ser transmitidos aos nós Meshtastic.

@@ -52,13 +52,14 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Recomendação:** confirmar explicitamente o requisito operacional. Se os destinatários precisam receber revogações, definir formato e prioridade para uma mensagem de cancelamento.
 - **Observação:** comportamento intencional não é, por si só, bug; precisa de decisão de produto e segurança operacional.
 
-### A06 — Hash de deduplicação inclui valores derivados e transitórios
+### A06 — Hash de deduplicação misturava conteúdo CAP com estado derivado [CORRIGIDO, CI PENDENTE]
 - **Área:** `src/mesh_alerts/state.py`
-- **Prioridade:** P2 provisória, consistência de estado.
-- **Evidência estática:** o hash canônico inclui `matches_region` e `is_current`; quando a identidade já existe, um hash diferente retorna `conflict` sem atualizar o registro existente.
-- **Impacto possível:** alterações de validade temporal ou de configuração geográfica podem ser tratadas como conflito de conteúdo e deixar o estado persistido desatualizado.
-- **Mitigação observada:** a rotina de invalidação verifica também `expires_at`, não apenas a flag `active`, antes de despachar mensagens pendentes.
-- **Teste recomendado:** processar o mesmo alerta antes e depois da expiração e com uma mudança de configuração geográfica; inspecionar `cap_alerts` e `outbox`.
+- **Prioridade original:** P2 provisória, consistência de estado.
+- **Evidência original:** o hash canônico incluía `matches_region` e `is_current`; para uma identidade já persistida, uma mudança nesses valores podia retornar `conflict` sem atualizar o estado.
+- **Correção aplicada:** para um alerta `Alert` já conhecido, quando remetente, identificador, envio, expiração e conteúdo de origem permanecem iguais, a persistência atualiza os campos derivados e o hash em vez de tratar a mudança de estado temporal como conflito. A comparação ignora a lista derivada de cidades. Quando o alerta deixa de estar vigente, mensagens pendentes são invalidadas.
+- **Limite da correção:** a atualização automática foi deliberadamente restrita a mensagens `Alert` sem referências, para não confundir mudanças legítimas de conteúdo em atualizações/cancelamentos com mudanças de estado derivado.
+- **Regressão adicionada:** processar um alerta, reprocessá-lo após a expiração e confirmar estado `expired`, `active=0` e ausência de mensagens pendentes.
+- **Validação:** aguardando workflows CI do commit que contém a correção.
 
 ### A07 — Arquivos TXT podem ser gravados antes da aceitação persistente [CORRIGIDO, CI PASSOU]
 - **Área:** `src/mesh_alerts/service.py`
@@ -95,12 +96,12 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - A03: limites de leitura HTTP e descompressão gzip implementados; testes de regressão aprovados na CI.
 - A04: destinos de redirecionamento revalidados e downgrade HTTPS bloqueado; testes de regressão aprovados na CI. Restrição por host/endereço ainda não implementada.
 - A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
-- A02, A05 e A06 continuam pendentes de análise/correção. A08 foi corrigido e tem regressões adicionadas; a validação CI está pendente.
+- A02 e A05 continuam pendentes de análise/decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; a validação CI está pendente.
 
 ## Próximos passos
 
 1. Validar via CI os testes de A08 para supressão no feed e estado SQLite.
-2. Reproduzir A06 com SQLite e validar identidade, expiração, conteúdo canônico e outbox antes de alterar a deduplicação.
+2. Validar via CI a regressão de A06 para reprocessamento após expiração.
 3. Exercitar falha de transporte INMET e documentar recuperação manual, sem retransmissão silenciosa.
 4. Confirmar se cancelamentos CAP precisam ser transmitidos aos nós Meshtastic.
 5. Avaliar a necessidade operacional de bloquear redirecionamentos para hosts privados/loopback e limitar também entradas de arquivos locais.

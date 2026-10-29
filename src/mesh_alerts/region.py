@@ -21,7 +21,9 @@ from shapely.validation import explain_validity
 from .config import ConfigError, load_config, municipality_map
 from .cap import NS, active_alert_entries, info_is_current, intersecting_municipalities, polygon_from_cap
 
-MAX_HTTP_RESPONSE_BYTES = 16 * 1024 * 1024
+# The national IDAP feed can exceed 16 MiB even when gzip is requested.
+# Keep the network body bounded and aligned with the decompression ceiling.
+MAX_HTTP_RESPONSE_BYTES = 64 * 1024 * 1024
 MAX_LOCAL_FILE_BYTES = 16 * 1024 * 1024
 MAX_DECOMPRESSED_BYTES = 64 * 1024 * 1024
 

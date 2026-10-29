@@ -12,12 +12,13 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 
 ## Achados priorizados
 
-### A01 — Configuração carregada no momento da importação
+### A01 — Configuração carregada no momento da importação [CORRIGIDO, CI PASSOU]
 - **Área:** `src/mesh_alerts/region.py`
-- **Prioridade:** P2, portabilidade/CLI.
-- **Evidência estática:** `DEFAULT_CONFIG = load_config()` no escopo do módulo. Como o serviço importa o módulo, a leitura do `config.yaml` padrão pode ocorrer antes de a configuração escolhida por `--config` ser processada.
-- **Impacto possível:** execução fora do diretório do projeto pode falhar mesmo quando o operador fornece um arquivo de configuração válido.
-- **Teste recomendado:** executar o CLI a partir de um diretório temporário, apontando `--config` para um arquivo válido fora da raiz do projeto.
+- **Prioridade original:** P2, portabilidade/CLI.
+- **Evidência original:** `DEFAULT_CONFIG = load_config()` no escopo do módulo fazia a configuração ser carregada durante a importação.
+- **Correção aplicada:** a configuração padrão e os municípios agora são carregados somente quando necessários.
+- **Regressão coberta:** `tests/test_region_import.py` importa `mesh_alerts.region` a partir de um diretório temporário.
+- **Validação:** workflow de testes passou em Python 3.10, 3.11, 3.12 e 3.13 no commit `a623675`.
 
 ### A02 — Falha de transmissão INMET não é recuperada automaticamente
 - **Área:** `src/mesh_alerts/inmet_scheduler.py`
@@ -27,21 +28,21 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Recomendação:** documentar a reconciliação manual e avaliar um comando explícito de recuperação que exija decisão do operador.
 - **Teste recomendado:** simular exceção do transporte, reiniciar o processo e confirmar que não há retransmissão silenciosa.
 
-### A03 — Leitura HTTP e descompressão gzip sem limite explícito de tamanho
+### A03 — Leitura HTTP e descompressão gzip sem limite explícito de tamanho [MITIGADO, CI PENDENTE]
 - **Área:** `src/mesh_alerts/region.py`
 - **Prioridade:** P2, resiliência.
-- **Evidência estática:** uso de `response.read()` e `gzip.decompress()` sem limite explícito de bytes.
-- **Impacto possível:** uma resposta excessiva ou conteúdo comprimido desproporcional pode consumir memória em excesso.
-- **Recomendação:** impor limites tanto à leitura comprimida quanto ao conteúdo descomprimido; validar conteúdo e tamanho antes do parsing.
-- **Teste recomendado:** respostas grandes, gzip truncado e conteúdo com razão de expansão excessiva.
+- **Evidência original:** leitura HTTP e descompressão gzip sem limites.
+- **Correção aplicada:** downloads usados pelo módulo `region.py` são limitados a 16 MiB; saída gzip é limitada a 64 MiB antes do parsing.
+- **Regressões adicionadas:** testes para resposta HTTP acima do limite e expansão gzip excessiva.
+- **Limitação restante:** feeds e malhas locais são arquivos locais confiáveis e não têm limite de leitura comprimida antes da descompressão; avaliar se o uso operacional exige limites também para arquivos locais.
 
-### A04 — Redirecionamentos HTTP não são revalidados explicitamente
+### A04 — Redirecionamentos HTTP não são revalidados explicitamente [MITIGADO PARCIALMENTE]
 - **Área:** `src/mesh_alerts/http_utils.py`
 - **Prioridade:** P2, condicionada à origem configurada.
-- **Evidência estática:** a URL inicial é validada como HTTP(S), mas `urllib.request.urlopen()` pode seguir redirecionamentos sem uma validação explícita do destino final. A configuração padrão exige HTTPS para fontes conhecidas, o que reduz a exposição no fluxo normal.
-- **Impacto possível:** se uma URL configurada ou uma origem confiável for comprometida, o redirecionamento pode levar a um destino inesperado.
-- **Recomendação:** validar destinos finais e definir uma política de hosts e HTTPS adequada ao modelo de implantação.
-- **Teste recomendado:** redirecionamentos para esquema não permitido, host não autorizado e endereço local.
+- **Evidência original:** destinos de redirecionamento não eram revalidados explicitamente.
+- **Correção aplicada:** cada destino de redirecionamento é validado como HTTP(S), e redirecionamentos de HTTPS para HTTP são recusados.
+- **Regressões adicionadas:** testes para esquema não permitido, downgrade HTTPS e redirecionamento HTTPS válido.
+- **Limitação restante:** não há lista de hosts permitidos nem bloqueio explícito de destinos privados/loopback; isso continua dependente da confiança na URL configurada e no serviço de origem.
 
 ### A05 — Cancelamento CAP altera estado, mas não envia aviso de cancelamento pelo rádio
 - **Área:** `src/mesh_alerts/service.py` e testes do serviço.
@@ -59,13 +60,13 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Mitigação observada:** a rotina de invalidação verifica também `expires_at`, não apenas a flag `active`, antes de despachar mensagens pendentes.
 - **Teste recomendado:** processar o mesmo alerta antes e depois da expiração e com uma mudança de configuração geográfica; inspecionar `cap_alerts` e `outbox`.
 
-### A07 — Arquivos TXT podem ser gravados antes da aceitação persistente
+### A07 — Arquivos TXT podem ser gravados antes da aceitação persistente [CORRIGIDO, CI PASSOU]
 - **Área:** `src/mesh_alerts/service.py`
 - **Prioridade:** P2, consistência entre artefatos.
-- **Evidência estática:** os arquivos de saída são escritos antes da chamada a `process_cap_alert()`, que pode retornar `conflict`.
-- **Impacto possível:** um TXT pode ser criado ou sobrescrito mesmo que o banco recuse o conteúdo para aquela identidade CAP.
-- **Recomendação:** persistir/decidir primeiro e gravar os arquivos somente para um resultado aceito, com política clara para `duplicate`.
-- **Teste recomendado:** processar duas versões diferentes com o mesmo remetente e identificador e comparar TXT, banco e outbox.
+- **Evidência original:** TXT era escrito antes da decisão persistente, permitindo divergência em caso de `conflict`.
+- **Correção aplicada:** TXT só é escrito depois de `process_cap_alert()` retornar `queued`; duplicatas e conflitos não sobrescrevem arquivos.
+- **Regressão coberta:** `test_conflicting_alert_does_not_overwrite_existing_text_files` compara os arquivos antes e depois do conflito.
+- **Validação:** workflow de testes passou em Python 3.10, 3.11, 3.12 e 3.13 no commit `a623675`.
 
 ### A08 — Referências CAP são reduzidas a remetente/identificador, descartando o timestamp
 - **Área:** `src/mesh_alerts/cap.py` e fluxo de persistência CAP.
@@ -88,20 +89,28 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - A configuração padrão exige HTTPS para os endpoints CAP, IBGE e INMET.
 - Os workflows CI consultados anteriormente passaram no commit-base. Isso confirma os checks configurados, não a ausência de defeitos.
 
-## Plano de validação final
+## Progresso de implementação e validação
 
-1. Reproduzir A08 com timestamp divergente e verificar tanto a seleção do feed quanto o estado persistido.
-2. Reproduzir A06 e A07 com SQLite e diretório de saída temporários.
-3. Testar A01 fora do diretório do projeto.
-4. Testar respostas HTTP excessivas e redirecionamentos inesperados.
-5. Exercitar falha de transporte INMET e documentar a recuperação manual.
-6. Confirmar com o responsável operacional se cancelamentos precisam ser transmitidos aos nós Meshtastic.
+- A01: corrigido; teste de importação fora da raiz do projeto aprovado na CI.
+- A03: limites de leitura HTTP e descompressão gzip implementados; testes de regressão aprovados na CI.
+- A04: destinos de redirecionamento revalidados e downgrade HTTPS bloqueado; testes de regressão aprovados na CI. Restrição por host/endereço ainda não implementada.
+- A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
+- A02, A05, A06 e A08 continuam pendentes de análise/correção. Não foram alterados por ainda exigirem decisões de comportamento ou mudanças mais amplas de estado/protocolo.
+
+## Próximos passos
+
+1. Reproduzir A08 com timestamp divergente e verificar seleção do feed e estado persistido.
+2. Reproduzir A06 com SQLite e validar identidade, expiração, conteúdo canônico e outbox antes de alterar a deduplicação.
+3. Exercitar falha de transporte INMET e documentar recuperação manual, sem retransmissão silenciosa.
+4. Confirmar se cancelamentos CAP precisam ser transmitidos aos nós Meshtastic.
+5. Avaliar a necessidade operacional de bloquear redirecionamentos para hosts privados/loopback e limitar também entradas de arquivos locais.
 
 ## Limitações
 
 - Não foi possível clonar o repositório nesta sessão por falha de resolução de `github.com`; os arquivos foram inspecionados via integração GitHub.
-- Não foram executados testes locais independentes nem transmissões de rádio nesta sessão.
-- As severidades são triagem estática, não avaliação de exploração confirmada.
+- Os testes automatizados foram executados via GitHub Actions; não foi possível executar uma cópia local independente nesta sessão por falha de resolução de `github.com`.
+- Nenhuma transmissão de rádio foi executada.
+- As severidades originais são triagem estática, não avaliação de exploração confirmada.
 - Nenhum resultado de teste hipotético deve ser reportado como execução real.
 
 ## Estado da branch

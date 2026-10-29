@@ -93,6 +93,9 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
     unknown_sections = set(raw) - set(DEFAULTS)
     if unknown_sections:
         raise ConfigError("Seções desconhecidas em config.yaml: " + ", ".join(sorted(unknown_sections)))
+    for section in ("regiao", "meshtastic", "servico", "fontes", "inmet"):
+        if section in raw and not isinstance(raw[section], dict):
+            raise ConfigError(f"'{section}' deve ser uma seção de configuração (objeto YAML).")
 
     config = _merge(DEFAULTS, raw)
     region = config["regiao"]

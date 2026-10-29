@@ -8,7 +8,7 @@
 
 ## Resumo executivo
 
-A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adicionadas regressões para os principais cenários. No commit mais recente `9000e53`, os workflows de testes (Python 3.10–3.13 e build), segurança/qualidade e validação live CAP concluíram com sucesso. Isso confirma os checks configurados, não a ausência de defeitos nem a segurança de toda a infraestrutura. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adicionadas regressões para os principais cenários. No commit `66f3a87`, os workflows de testes (Python 3.10–3.13 e build), segurança/qualidade e validação live CAP concluíram com sucesso. Isso confirma os checks configurados, não a ausência de defeitos nem a segurança de toda a infraestrutura. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ## Achados priorizados
 
@@ -49,10 +49,10 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - **Limitações restantes:** esta proteção não substitui controles de egress da infraestrutura, nem uma allowlist quando a aplicação deve consultar apenas serviços conhecidos. Endereços globalmente roteáveis também podem apontar para serviços sensíveis em redes com roteamento incomum; a política de rede deve continuar restrita ao necessário.
 - **Validação:** testes Python 3.10-3.13, build/teste do wheel, análise de segurança/qualidade e validação live CAP passaram no commit `6e54da2`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow; isso não equivale a uma validação ao vivo do IBGE.
 
-### A05 — Cancelamento CAP altera estado, mas não envia aviso de cancelamento pelo rádio
+### A05 — Cancelamento CAP altera estado, mas não envia aviso de cancelamento pelo rádio [DECISÃO OPERACIONAL PENDENTE]
 - **Área:** `src/mesh_alerts/service.py` e testes do serviço.
 - **Prioridade:** decisão funcional/operacional P2.
-- **Evidência estática:** o serviço documenta que cancelamentos atualizam o ciclo de vida e invalidam mensagens pendentes, sem criar um aviso de cancelamento para transmissão.
+- **Evidência estática e regressão:** `process_feed()` não cria mensagem para `msgType=Cancel`; `tests/test_service.py::test_cancel_updates_state_without_broadcasting_cancel_message` confirma que o alerta original passa a `cancelled`, as mensagens pendentes são invalidadas e nenhum texto `CANCELADO` é produzido. Este teste fixa o comportamento atual, não decide se o produto deve transmitir um cancelamento.
 - **Impacto possível:** destinatários que já receberam o alerta podem não saber que ele foi cancelado.
 - **Recomendação:** manter o comportamento atual até que o responsável operacional confirme o requisito. Se os destinatários precisam receber revogações, especificar antes da implementação: texto inequívoco de cancelamento, identificação do alerta original, prioridade, tratamento de cancelamento recebido após envio do alerta, deduplicação e política para destinos/canais. Um aviso de cancelamento não deve ser tratado como um alerta comum nem retransmitido silenciosamente.
 - **Decisão pendente:** requisito de produto/segurança operacional. A auditoria não implementa transmissão de cancelamento sem essa definição, porque uma mudança incorreta pode confundir operadores e destinatários.
@@ -101,13 +101,13 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - A03: limites de leitura HTTP, arquivo local e descompressão gzip implementados; regressões HTTP/gzip e arquivos locais adicionadas; CI passou no commit `8571233` em Python 3.10-3.13, build do pacote, segurança/qualidade e validação live CAP.
 - A04: resolução DNS validada no caminho de conexão, endereços não públicos e respostas DNS mistas rejeitados, e socket conectado ao endereço exato validado; regressões adicionadas para hostname privado, DNS misto e pinning. CI passou no commit `6e54da2`; controles de egress continuam recomendados.
 - A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
-- A02 está mitigado com consulta de status somente leitura e procedimento manual para reconciliação, sem retry automático. A05 continua aguardando decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP passaram no commit `3041ff6`. No commit mais recente `9000e53`, os workflows configurados de testes, segurança/qualidade e live CAP também passaram. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+- A02 está mitigado com consulta de status somente leitura e procedimento manual para reconciliação, sem retry automático. A05 continua aguardando decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP passaram no commit `3041ff6`. No commit `66f3a87`, os workflows configurados de testes, segurança/qualidade e live CAP passaram. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ## Próximos passos
 
-1. A CI mais recente está verde para os workflows configurados: testes Python 3.10–3.13/build, segurança/qualidade e live CAP. `ibge-live-probe` foi ignorado, portanto não declarar validação ao vivo do IBGE.
+1. No commit `66f3a87`, a CI está verde para os workflows configurados: testes Python 3.10–3.13/build, segurança/qualidade e live CAP. `ibge-live-probe` foi ignorado, portanto não declarar validação ao vivo do IBGE.
 2. A02: manter reconciliação manual de falhas/incertezas INMET; não adicionar retry automático sem idempotência ou confirmação de entrega.
-3. A05: obter decisão do responsável operacional sobre envio de cancelamentos CAP. Até lá, manter o comportamento documentado e não mudar o protocolo de rádio.
+3. A05: a lógica e a regressão existentes confirmam que cancelamentos CAP atualizam o estado e invalidam pendências sem gerar transmissão. A decisão sobre adicionar um aviso de cancelamento continua pendente do responsável operacional; não mudar o protocolo de rádio sem requisito aprovado.
 4. Para implantação, avaliar controles de egress/allowlist e testar a política de rede no ambiente real. Não considerar validação em nível de aplicação substituta de defesa de rede.
 
 ## Limitações

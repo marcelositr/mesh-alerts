@@ -282,6 +282,7 @@ info_is_current = is_info_current
 polygon_from_cap = parse_cap_polygon
 circle_from_cap = parse_cap_circle
 references_to_keys = parse_reference_keys
+references_to_records = parse_reference_records
 alert_key = get_alert_key
 active_alert_entries = get_active_alert_entries
 intersecting_municipalities = find_intersecting_municipalities

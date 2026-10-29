@@ -493,6 +493,32 @@ class CapValidationTests(unittest.TestCase):
         )
         self.assertEqual(cities, {"Ituverava"})
 
+    def test_mismatched_reference_timestamp_does_not_suppress_original(self):
+        xml = """<feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:c="urn:oasis:names:tc:emergency:cap:1.2">
+          <entry><title>Original</title><content><c:alert>
+            <c:sender>sender@example</c:sender><c:identifier>original-id</c:identifier>
+            <c:sent>2026-10-22T17:00:00Z</c:sent><c:status>Actual</c:status>
+            <c:msgType>Alert</c:msgType>
+            <c:info><c:headline>Alerta original</c:headline></c:info>
+          </c:alert></content></entry>
+          <entry><title>Cancelamento malformado</title><content><c:alert>
+            <c:sender>sender@example</c:sender><c:identifier>cancel-id</c:identifier>
+            <c:sent>2026-10-22T17:30:00Z</c:sent><c:status>Actual</c:status>
+            <c:msgType>Cancel</c:msgType>
+            <c:references>sender@example,original-id,2026-10-22T16:59:00Z</c:references>
+          </c:alert></content></entry>
+        </feed>"""
+        root = ET.fromstring(xml)
+        active, _expired = get_active_alert_entries(root, self.now)
+        self.assertEqual(len(active), 1)
+        self.assertEqual(
+            active[0][1].findtext("c:identifier", namespaces={
+                "c": "urn:oasis:names:tc:emergency:cap:1.2"
+            }),
+            "original-id",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

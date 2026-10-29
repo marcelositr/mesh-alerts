@@ -2,16 +2,29 @@
 
 from __future__ import annotations
 
+import ipaddress
 import urllib.request
 from urllib.parse import urlsplit
 from urllib.request import Request
 
 
 def validate_http_url(url: str) -> None:
-    """Reject non-HTTP(S) URLs before making an outbound request."""
+    """Reject unsafe URL forms and literal non-public IP destinations."""
     parsed = urlsplit(url)
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
         raise ValueError("A URL precisa usar HTTP ou HTTPS e informar um host.")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("URLs com credenciais embutidas não são permitidas.")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise ValueError("A URL contém uma porta inválida.") from exc
+    try:
+        address = ipaddress.ip_address(parsed.hostname)
+    except ValueError:
+        address = None
+    if address is not None and not address.is_global:
+        raise ValueError("Destinos IP não públicos (privados, loopback ou reservados) não são permitidos.")
 
 
 class _ValidatedRedirectHandler(urllib.request.HTTPRedirectHandler):

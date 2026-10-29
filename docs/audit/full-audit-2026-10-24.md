@@ -20,13 +20,14 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Regressão coberta:** `tests/test_region_import.py` importa `mesh_alerts.region` a partir de um diretório temporário.
 - **Validação:** workflow de testes passou em Python 3.10, 3.11, 3.12 e 3.13 no commit `a623675`.
 
-### A02 — Falha de transmissão INMET não é recuperada automaticamente
-- **Área:** `src/mesh_alerts/inmet_scheduler.py`
+### A02 — Falha de transmissão INMET exige reconciliação manual [MITIGADO]
+- **Área:** `src/mesh_alerts/inmet_scheduler.py` e `src/mesh_alerts/inmet_cli.py`.
 - **Prioridade:** P2, operação.
-- **Evidência estática:** o registro é reservado antes do I/O externo; uma exceção atualiza o estado para `failed`, e a existência do registro impede nova tentativa automática.
-- **Impacto possível:** um boletim pode não ser transmitido após falha, exigindo procedimento operacional manual. A decisão reduz o risco de duplicação quando o resultado da transmissão é incerto.
-- **Recomendação:** documentar a reconciliação manual e avaliar um comando explícito de recuperação que exija decisão do operador.
-- **Teste recomendado:** simular exceção do transporte, reiniciar o processo e confirmar que não há retransmissão silenciosa.
+- **Risco original:** uma exceção do transporte deixa registro `failed` e impede retry automático. Isso evita duplicação quando o rádio pode ter transmitido apesar de a chamada ter falhado, mas o operador precisava inspecionar SQLite manualmente.
+- **Mitigação aplicada:** novo comando somente leitura `mesh-alerts-inmet --status --database <caminho>` lista data, período, código municipal, estado, horário e detalhe. Não abre interface de rádio nem transmite. O caminho de envio automático continua sem retry de registros existentes.
+- **Procedimento operacional:** consultar o status; verificar logs do dispositivo/rádio e confirmar com operadores receptores se o boletim chegou; se a entrega continuar incerta, não retransmitir automaticamente. Qualquer reenvio deve ser uma decisão operacional explícita e documentada.
+- **Regressão adicionada:** força falha do transporte e verifica que os registros `failed` e seus detalhes são exibidos pela função de consulta.
+- **Validação:** workflows CI da alteração pendentes.
 
 ### A03 — Leitura HTTP e descompressão gzip sem limite explícito de tamanho [MITIGADO, CI PENDENTE]
 - **Área:** `src/mesh_alerts/region.py`
@@ -36,13 +37,13 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Regressões adicionadas:** testes para resposta HTTP acima do limite e expansão gzip excessiva.
 - **Limitação restante:** feeds e malhas locais são arquivos locais confiáveis e não têm limite de leitura comprimida antes da descompressão; avaliar se o uso operacional exige limites também para arquivos locais.
 
-### A04 — Redirecionamentos HTTP não são revalidados explicitamente [MITIGADO PARCIALMENTE]
-- **Área:** `src/mesh_alerts/http_utils.py`
+### A04 — Redirecionamentos HTTP e destinos de rede [MITIGADO PARCIALMENTE]
+- **Área:** `src/mesh_alerts/http_utils.py`.
 - **Prioridade:** P2, condicionada à origem configurada.
-- **Evidência original:** destinos de redirecionamento não eram revalidados explicitamente.
-- **Correção aplicada:** cada destino de redirecionamento é validado como HTTP(S), e redirecionamentos de HTTPS para HTTP são recusados.
-- **Regressões adicionadas:** testes para esquema não permitido, downgrade HTTPS e redirecionamento HTTPS válido.
-- **Limitação restante:** não há lista de hosts permitidos nem bloqueio explícito de destinos privados/loopback; isso continua dependente da confiança na URL configurada e no serviço de origem.
+- **Correção aplicada anteriormente:** cada destino de redirecionamento é validado como HTTP(S), e redirecionamentos HTTPS→HTTP são recusados.
+- **Correção adicional:** URLs com credenciais embutidas e portas inválidas são recusadas; endereços IP literais não globais, incluindo privados, loopback, link-local e reservados, são bloqueados, inclusive em redirects.
+- **Regressões adicionadas:** esquemas inválidos, downgrade HTTPS, redirect HTTPS válido, IPs IPv4/IPv6 não públicos, credenciais, porta inválida e redirect para loopback.
+- **Limitação restante importante:** isso não bloqueia hostname público que resolva para IP privado/loopback nem cobre DNS rebinding. Para proteção SSRF completa, a aplicação precisa de allowlist de hosts ou resolução DNS validada ligada à conexão e controles de egress na infraestrutura.
 
 ### A05 — Cancelamento CAP altera estado, mas não envia aviso de cancelamento pelo rádio
 - **Área:** `src/mesh_alerts/service.py` e testes do serviço.
@@ -103,7 +104,7 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 1. Preservar o resultado verde da CI para A06 e A08 ao continuar alterações.
 2. Exercitar falha de transporte INMET e documentar recuperação manual, sem retransmissão silenciosa.
 3. Confirmar se cancelamentos CAP precisam ser transmitidos aos nós Meshtastic.
-4. Avaliar a necessidade operacional de bloquear redirecionamentos para hosts privados/loopback e limitar também entradas de arquivos locais.
+4. Avaliar proteção de destinos resolvidos por DNS e limitar entradas de arquivos locais se elas não forem totalmente confiáveis.
 
 ## Limitações
 

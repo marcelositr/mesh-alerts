@@ -14,6 +14,7 @@ from .inmet_config import load_configuration
 
 PERIOD_LABELS = {"manha": "MANHÃ", "tarde": "TARDE", "noite": "NOITE"}
 USER_AGENT = "mesh-alerts/0.1"
+MAX_HTTP_RESPONSE_BYTES = 16 * 1024 * 1024
 WIND_INTENSITY_LABELS = {
     "fracos": "fraco",
     "moderados": "moderado",
@@ -53,7 +54,12 @@ def fetch_forecast(ibge_code: str, config: dict[str, Any] | None = None) -> dict
     )
     timeout = int(inmet.get("timeout_segundos", 30))
     with open_http_url(request, timeout=timeout) as resposta:
-        data = json.loads(resposta.read().decode("utf-8"))
+        raw = resposta.read(MAX_HTTP_RESPONSE_BYTES + 1)
+    if len(raw) > MAX_HTTP_RESPONSE_BYTES:
+        raise ValueError(
+            f"Resposta do INMET excede o limite de {MAX_HTTP_RESPONSE_BYTES} bytes."
+        )
+    data = json.loads(raw.decode("utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"Resposta inesperada do INMET para o código IBGE {ibge_code}.")
     return data

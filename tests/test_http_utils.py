@@ -49,6 +49,32 @@ class ValidateHttpUrlTests(unittest.TestCase):
         self.assertEqual(redirected.full_url, "https://cdn.example.test/end")
 
 
+    def test_rejects_private_loopback_and_reserved_literal_ips(self):
+        for url in (
+            "http://127.0.0.1/resource",
+            "http://10.0.0.8/resource",
+            "http://192.168.1.10/resource",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://[::1]/resource",
+            "http://[fc00::1]/resource",
+        ):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                validate_http_url(url)
+
+    def test_rejects_embedded_credentials_and_invalid_port(self):
+        with self.assertRaisesRegex(ValueError, "credenciais"):
+            validate_http_url("https://user:pass@example.test/resource")
+        with self.assertRaisesRegex(ValueError, "porta inválida"):
+            validate_http_url("https://example.test:bad/resource")
+
+    def test_rejects_redirect_to_private_ip(self):
+        handler = _ValidatedRedirectHandler()
+        request = Request("https://example.test/start")
+        with self.assertRaises(ValueError):
+            handler.redirect_request(
+                request, None, 302, "Found", {}, "http://127.0.0.1/internal"
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

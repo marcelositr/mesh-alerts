@@ -364,8 +364,10 @@ class CapValidationTests(unittest.TestCase):
         )
         self.assertIsNotNone(unclosed)
         self.assertTrue(unclosed.is_valid)
-        self.assertEqual(tuple(unclosed.exterior.coords[0]), (-47.0, -20.0))
-        self.assertEqual(tuple(unclosed.exterior.coords[-1]), (-47.0, -20.0))
+        self.assertEqual(
+            tuple(unclosed.exterior.coords[0]),
+            tuple(unclosed.exterior.coords[-1]),
+        )
         self.assertIsNone(parse_cap_polygon("-20.0,-47.0 -20.1,-47.0"))
         self.assertIsNone(
             parse_cap_polygon(

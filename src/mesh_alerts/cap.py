@@ -71,7 +71,8 @@ def _extract_polygonal_parts(geometry: BaseGeometry) -> list[Polygon]:
 def parse_cap_polygon(value: str) -> Polygon | MultiPolygon | None:
     """Parse a closed CAP polygon and repair invalid polygonal geometry."""
     pairs = (value or "").split()
-    if len(pairs) < 4:
+    # Three vertices are sufficient; an omitted closing vertex is repaired below.
+    if len(pairs) < 3:
         return None
 
     coordinates = []
@@ -89,9 +90,11 @@ def parse_cap_polygon(value: str) -> Polygon | MultiPolygon | None:
             return None
         coordinates.append((lon, lat))
 
-    # CAP polygon boundaries must explicitly repeat the first point at the end.
+    # Some live CAP publishers omit the repeated closing vertex. Closing the
+    # ring is unambiguous for a polygon and prevents valid coverage from being
+    # silently discarded; malformed coordinates are still rejected above.
     if coordinates[0] != coordinates[-1]:
-        return None
+        coordinates.append(coordinates[0])
 
     try:
         geometry = Polygon(coordinates)

@@ -8,7 +8,7 @@
 
 ## Resumo executivo
 
-A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adicionadas regressões para os principais cenários. No commit `66f3a87`, os workflows de testes (Python 3.10–3.13 e build), segurança/qualidade e validação live CAP concluíram com sucesso. Isso confirma os checks configurados, não a ausência de defeitos nem a segurança de toda a infraestrutura. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adicionadas regressões para os principais cenários. No commit `855d8d6`, os workflows de testes (Python 3.10–3.13 e build), segurança/qualidade e validação live CAP concluíram com sucesso. Isso confirma os checks configurados, não a ausência de defeitos nem a segurança de toda a infraestrutura. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ## Achados priorizados
 
@@ -93,7 +93,7 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - Resultados incertos não são repetidos silenciosamente; há resolução explícita.
 - Mensagens pendentes expiradas ou invalidadas são marcadas antes do despacho.
 - A configuração padrão exige HTTPS para os endpoints CAP, IBGE e INMET.
-- Os workflows CI consultados anteriormente passaram no commit-base. Isso confirma os checks configurados, não a ausência de defeitos.
+- No commit `855d8d6`, os workflows CI configurados de testes, segurança/qualidade e validação live CAP passaram. Isso confirma os checks configurados, não a ausência de defeitos.
 
 ## Progresso de implementação e validação
 
@@ -101,11 +101,11 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - A03: limites de leitura HTTP, arquivo local e descompressão gzip implementados; regressões HTTP/gzip e arquivos locais adicionadas; CI passou no commit `8571233` em Python 3.10-3.13, build do pacote, segurança/qualidade e validação live CAP.
 - A04: resolução DNS validada no caminho de conexão, endereços não públicos e respostas DNS mistas rejeitados, e socket conectado ao endereço exato validado; regressões adicionadas para hostname privado, DNS misto e pinning. CI passou no commit `6e54da2`; controles de egress continuam recomendados.
 - A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
-- A02 está mitigado com consulta de status somente leitura e procedimento manual para reconciliação, sem retry automático. A05 continua aguardando decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP passaram no commit `3041ff6`. No commit `66f3a87`, os workflows configurados de testes, segurança/qualidade e live CAP passaram. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+- A02 está mitigado com consulta de status somente leitura e procedimento manual para reconciliação, sem retry automático. A05 continua aguardando decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP passaram no commit `3041ff6`. No commit `855d8d6`, os workflows configurados de testes, segurança/qualidade e live CAP passaram. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ## Próximos passos
 
-1. No commit `66f3a87`, a CI está verde para os workflows configurados: testes Python 3.10–3.13/build, segurança/qualidade e live CAP. `ibge-live-probe` foi ignorado, portanto não declarar validação ao vivo do IBGE.
+1. No commit `855d8d6`, a CI está verde para os workflows configurados: testes Python 3.10–3.13/build, segurança/qualidade e live CAP. `ibge-live-probe` foi ignorado, portanto não declarar validação ao vivo do IBGE.
 2. A02: manter reconciliação manual de falhas/incertezas INMET; não adicionar retry automático sem idempotência ou confirmação de entrega.
 3. A05: a lógica e a regressão existentes confirmam que cancelamentos CAP atualizam o estado e invalidam pendências sem gerar transmissão. A decisão sobre adicionar um aviso de cancelamento continua pendente do responsável operacional; não mudar o protocolo de rádio sem requisito aprovado.
 4. Para implantação, avaliar controles de egress/allowlist e testar a política de rede no ambiente real. Não considerar validação em nível de aplicação substituta de defesa de rede.

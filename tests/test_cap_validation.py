@@ -397,6 +397,22 @@ class CapValidationTests(unittest.TestCase):
         )
         self.assertEqual(cities, {"Dentro", "Borda"})
 
+    def test_unclosed_cap_polygon_still_matches_intersecting_municipality(self):
+        alert = ET.fromstring(
+            f'<c:alert xmlns:c="{XML_NAMESPACES["c"]}"><c:info>'
+            '<c:area><c:polygon>'
+            '-20.0,-47.0 -20.1,-47.0 -20.1,-47.1'
+            '</c:polygon></c:area></c:info></c:alert>'
+        )
+        boundaries = {"3524105": box(-47.08, -20.08, -47.02, -20.02)}
+        names = {"3524105": "Ituverava"}
+
+        cities, _expired, _circles = find_intersecting_municipalities(
+            alert, boundaries, names, self.now
+        )
+
+        self.assertEqual(cities, {"Ituverava"})
+
     def test_minas_geocode_does_not_suppress_geometry_crossing_sp_municipality(self):
         alert = ET.fromstring(
             '<c:alert xmlns:c="urn:oasis:names:tc:emergency:cap:1.2"><c:info><c:area>'

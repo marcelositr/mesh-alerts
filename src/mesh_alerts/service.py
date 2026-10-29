@@ -182,11 +182,6 @@ def process_feed(
             message = _make_messages(alert, cities, infos, message_limit, region_uf)
         # CAP Cancel messages update internal lifecycle state and invalidate pending
         # notifications, but intentionally do not generate a Meshtastic broadcast.
-        if isinstance(message, list):
-            for index, part in enumerate(message, start=1):
-                _write_text_file(output_dir, sender, identifier, part, index)
-        elif message:
-            _write_text_file(output_dir, sender, identifier, message)
         result = store.process_cap_alert(
             sender=sender, identifier=identifier, sent=_text(alert, "c:sent"),
             msg_type=msg_type, payload=payload, references=sorted(refs),
@@ -194,6 +189,13 @@ def process_feed(
             message_text=message, destination=destination, now=now,
         )
         counts[result] = counts.get(result, 0) + 1
+        # Keep filesystem artifacts consistent with the accepted persistent state.
+        # Conflicts and duplicates must not create or overwrite output files.
+        if result == "queued" and isinstance(message, list):
+            for index, part in enumerate(message, start=1):
+                _write_text_file(output_dir, sender, identifier, part, index)
+        elif result == "queued" and message:
+            _write_text_file(output_dir, sender, identifier, message)
     return counts
 
 

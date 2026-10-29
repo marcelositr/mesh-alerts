@@ -147,14 +147,22 @@ def parse_cap_circle(value: str, points: int = 72) -> Polygon | None:
     return None if polygon.is_empty else polygon
 
 
-def parse_reference_keys(value: str | None) -> set[tuple[str, str]]:
-    """Extract sender and identifier pairs from CAP sender,identifier,sent references."""
-    keys: set[tuple[str, str]] = set()
+def parse_reference_records(value: str | None) -> set[tuple[str, str, datetime]]:
+    """Extract CAP references while preserving the referenced message timestamp."""
+    records: set[tuple[str, str, datetime]] = set()
     for reference in (value or "").split():
         parts = reference.split(",")
-        if len(parts) == 3 and parts[0] and parts[1] and parse_cap_timestamp(parts[2]):
-            keys.add((parts[0], parts[1]))
-    return keys
+        if len(parts) != 3 or not parts[0] or not parts[1]:
+            continue
+        sent = parse_cap_timestamp(parts[2])
+        if sent is not None:
+            records.add((parts[0], parts[1], sent))
+    return records
+
+
+def parse_reference_keys(value: str | None) -> set[tuple[str, str]]:
+    """Extract sender and identifier pairs from valid CAP references."""
+    return {(sender, identifier) for sender, identifier, _sent in parse_reference_records(value)}
 
 
 def get_alert_key(alert: ET.Element) -> tuple[str, str] | None:
@@ -169,6 +177,8 @@ def get_active_alert_entries(
 ) -> tuple[list[tuple[ET.Element, ET.Element]], int]:
     """Resolve current Actual Alert and Update messages and their valid references."""
     records: list[tuple[ET.Element, ET.Element, str, tuple[str, str]]] = []
+    sent_by_key: dict[tuple[str, str], datetime] = {}
+    references_by_key: list[tuple[str, tuple[str, str], datetime]] = []
     suppressed: set[tuple[str, str]] = set()
     expired_info_count = 0
     now_utc = now.astimezone(timezone.utc)
@@ -188,15 +198,23 @@ def get_active_alert_entries(
         if key is None or sent is None or sent > now_utc:
             continue
 
-        # Only a message already sent can supersede an earlier alert.
-        references = parse_reference_keys(
+        sent_by_key[key] = sent
+        # Preserve the referenced sent timestamp. A sender/identifier pair alone
+        # is insufficient: a malformed or mismatched reference must not suppress
+        # a different message that happens to reuse the same identity.
+        references = parse_reference_records(
             alert.findtext("c:references", default="", namespaces=XML_NAMESPACES)
         )
         if msg_type in ("Update", "Cancel"):
-            suppressed.update(references)
+            references_by_key.extend((msg_type, (ref_sender, ref_identifier), ref_sent)
+                                     for ref_sender, ref_identifier, ref_sent in references)
         records.append((entry, alert, msg_type, key))
 
-    active: list[tuple[ET.Element, ET.Element]] = []
+    for _msg_type, ref_key, ref_sent in references_by_key:
+        if sent_by_key.get(ref_key) == ref_sent:
+            suppressed.add(ref_key)
+
+    active: list[tuple[ET.Element, ET.Element]] =
     for entry, alert, msg_type, key in records:
         if msg_type == "Cancel" or key in suppressed:
             continue

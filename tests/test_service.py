@@ -93,6 +93,37 @@ class MeshAlertsServiceTests(unittest.TestCase):
             self.assertEqual(len(list(output_dir.glob("*.txt"))), 4)
             self.assertFalse(any("CANCELADO" in path.read_text(encoding="utf-8") for path in output_dir.glob("*.txt")))
 
+    def test_conflicting_alert_does_not_overwrite_existing_text_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = AlertStateStore(Path(directory) / "state.sqlite3")
+            output_dir = Path(directory) / "output"
+            original = ET.fromstring(FEED)
+            changed_feed = FEED.replace("Chuva forte", "Conteúdo divergente")
+            changed = ET.fromstring(changed_feed)
+            with patch(
+                "mesh_alerts.service.intersecting_municipalities",
+                return_value=({"Ituverava"}, 0, 0),
+            ):
+                first = process_feed(
+                    original, store, {}, NOW, output_dir, "^all", region_uf="SP"
+                )
+                before = {
+                    path.name: path.read_text(encoding="utf-8")
+                    for path in output_dir.glob("*.txt")
+                }
+                second = process_feed(
+                    changed, store, {}, NOW, output_dir, "^all", region_uf="SP"
+                )
+
+            after = {
+                path.name: path.read_text(encoding="utf-8")
+                for path in output_dir.glob("*.txt")
+            }
+            self.assertEqual(first["queued"], 1)
+            self.assertEqual(second["conflict"], 1)
+            self.assertEqual(after, before)
+            self.assertEqual(len(store.list_outbox()), 4)
+
     def test_reprocessing_feed_does_not_enqueue_duplicate(self):
         with tempfile.TemporaryDirectory() as directory:
             root = ET.fromstring(FEED)

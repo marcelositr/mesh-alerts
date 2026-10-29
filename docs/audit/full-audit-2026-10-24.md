@@ -91,7 +91,7 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 
 ### Revisão adicional de CI e release
 - Os workflows de testes e análise de segurança declaram permissões mínimas `contents: read`; o workflow de release separa testes/segurança do job de publicação, que recebe `contents: write` somente onde necessário.
-- As actions principais examinadas estão fixadas por SHA e o checkout de etapas de análise de segurança desabilita a persistência das credenciais. O workflow de testes ainda usa o comportamento padrão de persistência do checkout; como melhoria defensiva futura, pode-se definir `persist-credentials: false` também nesse workflow, após confirmar que nenhum passo depende de credenciais Git posteriores ao checkout.
+- As actions principais examinadas estão fixadas por SHA e os workflows de testes e análise de segurança desabilitam `persist-credentials` nos checkouts; os passos posteriores não precisam de credenciais Git. Isso reduz a exposição desnecessária do token do workflow no repositório de trabalho.
 - Os checks atuais de workflow, análise Python e varredura de segredos passaram. Isso não substitui revisão de configurações de proteção de branch, permissões do repositório e configuração do ambiente de publicação, que não são comprovadas apenas pelos arquivos versionados.
 
 ## Controles positivos observados

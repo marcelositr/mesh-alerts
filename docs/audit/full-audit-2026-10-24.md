@@ -3,12 +3,12 @@
 - Data: 2026-10-24
 - Branch de trabalho: `audit/full-audit-2026-10-24`
 - Escopo: revisão estática do código-fonte, testes existentes e regressões validadas pelos workflows do GitHub Actions.
-- Estado: achados priorizados e regressões principais verificadas na CI; esta revisão não substitui uma avaliação independente de implantação e rede.
+- Estado: achados priorizados e regressões principais verificadas na CI; A05 requer decisão operacional explícita antes de qualquer alteração de comportamento. Esta revisão não substitui uma avaliação independente de implantação e rede.
 - Restrição operacional: esta auditoria não altera a branch `main`, não abre pull request e não realiza transmissão via rádio.
 
 ## Resumo executivo
 
-A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adicionadas regressões para os principais cenários e os workflows de testes, segurança/qualidade e validação live CAP passaram no commit `6e54da2`. Isso confirma os checks configurados, não a ausência de defeitos nem a segurança de toda a infraestrutura. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adicionadas regressões para os principais cenários. No commit mais recente `9000e53`, os workflows de testes (Python 3.10–3.13 e build), segurança/qualidade e validação live CAP concluíram com sucesso. Isso confirma os checks configurados, não a ausência de defeitos nem a segurança de toda a infraestrutura. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ## Achados priorizados
 
@@ -54,8 +54,8 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - **Prioridade:** decisão funcional/operacional P2.
 - **Evidência estática:** o serviço documenta que cancelamentos atualizam o ciclo de vida e invalidam mensagens pendentes, sem criar um aviso de cancelamento para transmissão.
 - **Impacto possível:** destinatários que já receberam o alerta podem não saber que ele foi cancelado.
-- **Recomendação:** confirmar explicitamente o requisito operacional. Se os destinatários precisam receber revogações, definir formato e prioridade para uma mensagem de cancelamento.
-- **Observação:** comportamento intencional não é, por si só, bug; precisa de decisão de produto e segurança operacional.
+- **Recomendação:** manter o comportamento atual até que o responsável operacional confirme o requisito. Se os destinatários precisam receber revogações, especificar antes da implementação: texto inequívoco de cancelamento, identificação do alerta original, prioridade, tratamento de cancelamento recebido após envio do alerta, deduplicação e política para destinos/canais. Um aviso de cancelamento não deve ser tratado como um alerta comum nem retransmitido silenciosamente.
+- **Decisão pendente:** requisito de produto/segurança operacional. A auditoria não implementa transmissão de cancelamento sem essa definição, porque uma mudança incorreta pode confundir operadores e destinatários.
 
 ### A06 — Hash de deduplicação misturava conteúdo CAP com estado derivado [CORRIGIDO, CI PASSOU]
 - **Área:** `src/mesh_alerts/state.py`
@@ -101,14 +101,14 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - A03: limites de leitura HTTP, arquivo local e descompressão gzip implementados; regressões HTTP/gzip e arquivos locais adicionadas; CI passou no commit `8571233` em Python 3.10-3.13, build do pacote, segurança/qualidade e validação live CAP.
 - A04: resolução DNS validada no caminho de conexão, endereços não públicos e respostas DNS mistas rejeitados, e socket conectado ao endereço exato validado; regressões adicionadas para hostname privado, DNS misto e pinning. CI passou no commit `6e54da2`; controles de egress continuam recomendados.
 - A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
-- A02 e A05 continuam pendentes de análise/decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP passaram no commit `3041ff6`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+- A02 está mitigado com consulta de status somente leitura e procedimento manual para reconciliação, sem retry automático. A05 continua aguardando decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP passaram no commit `3041ff6`. No commit mais recente `9000e53`, os workflows configurados de testes, segurança/qualidade e live CAP também passaram. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ## Próximos passos
 
-1. Preservar o resultado verde da CI para A06 e A08 ao continuar alterações.
-2. Exercitar falha de transporte INMET e documentar recuperação manual, sem retransmissão silenciosa.
-3. Confirmar se cancelamentos CAP precisam ser transmitidos aos nós Meshtastic.
-4. Avaliar controles de egress/allowlist adequados ao ambiente de implantação. Não considerar validação em nível de aplicação substituta de defesa de rede.
+1. A CI mais recente está verde para os workflows configurados: testes Python 3.10–3.13/build, segurança/qualidade e live CAP. `ibge-live-probe` foi ignorado, portanto não declarar validação ao vivo do IBGE.
+2. A02: manter reconciliação manual de falhas/incertezas INMET; não adicionar retry automático sem idempotência ou confirmação de entrega.
+3. A05: obter decisão do responsável operacional sobre envio de cancelamentos CAP. Até lá, manter o comportamento documentado e não mudar o protocolo de rádio.
+4. Para implantação, avaliar controles de egress/allowlist e testar a política de rede no ambiente real. Não considerar validação em nível de aplicação substituta de defesa de rede.
 
 ## Limitações
 

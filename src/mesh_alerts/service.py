@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .cap import (
     NS, active_alert_entries, alert_key, info_is_current, intersecting_municipalities,
-    parse_cap_datetime, references_to_keys,
+    parse_cap_datetime, references_to_records,
 )
 from .config import ConfigError, load_config, municipality_map
 from .state import AlertStateStore
@@ -153,7 +153,7 @@ def process_feed(
         if _text(alert, "c:status") != "Actual" or msg_type not in {"Alert", "Update", "Cancel"}:
             continue
         sender, identifier = key
-        refs = references_to_keys(_text(alert, "c:references"))
+        refs = references_to_records(_text(alert, "c:references"))
         infos = _current_info(alert, now)
         all_infos = alert.findall("c:info", NS)
         is_current = key in active_keys and bool(infos)

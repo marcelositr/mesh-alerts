@@ -29,14 +29,15 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Regressão adicionada:** força falha do transporte e verifica que os registros `failed` e seus detalhes são exibidos pela função de consulta.
 - **Validação:** workflows Python unit tests, security/quality e live CAP/IBGE passaram no commit `4e90017` para as alterações anteriores de A02/A04. As mudanças mais recentes em A03 ainda aguardam CI.
 
-### A03 — Leitura HTTP e descompressão gzip sem limite explícito de tamanho [MITIGADO, CI PENDENTE]
+### A03 — Leitura HTTP e descompressão gzip sem limite explícito de tamanho [MITIGADO, CI PASSOU]
 - **Área:** `src/mesh_alerts/region.py`
 - **Prioridade:** P2, resiliência.
 - **Evidência original:** leitura HTTP e descompressão gzip sem limites.
 - **Correção aplicada:** downloads usados pelo módulo `region.py` são limitados a 16 MiB; saída gzip é limitada a 64 MiB antes do parsing.
 - **Regressões adicionadas:** testes para resposta HTTP acima do limite e expansão gzip excessiva.
 - **Correção adicional:** feeds CAP locais e GeoJSON de malhas locais agora têm limite de leitura de 16 MiB. A descompressão gzip usada nas respostas do IBGE também usa o limite de saída de 64 MiB, em vez de `gzip.decompress()` sem limite.
-- **Regressões adicionadas:** arquivos locais de feed CAP e malha GeoJSON acima do limite são rejeitados.
+- **Regressões adicionadas:** arquivos locais de feed CAP e malha GeoJSON acima do limite são rejeitados; resposta gzip do caminho alternativo de malha municipal do IBGE também é testada contra expansão excessiva.
+- **Validação:** workflows Python unit tests (Python 3.10, 3.11, 3.12 e 3.13, incluindo build e testes do wheel), security/quality e live CAP passaram no commit `8571233`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow; não é uma validação ao vivo do IBGE.
 
 ### A04 — Redirecionamentos HTTP e destinos de rede [MITIGADO PARCIALMENTE]
 - **Área:** `src/mesh_alerts/http_utils.py`.
@@ -95,7 +96,7 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 ## Progresso de implementação e validação
 
 - A01: corrigido; teste de importação fora da raiz do projeto aprovado na CI.
-- A03: limites de leitura HTTP, arquivo local e descompressão gzip implementados; testes de regressão HTTP/gzip e arquivos locais adicionados. CI das últimas mudanças pendente.
+- A03: limites de leitura HTTP, arquivo local e descompressão gzip implementados; regressões HTTP/gzip e arquivos locais adicionadas; CI passou no commit `8571233` em Python 3.10-3.13, build do pacote, segurança/qualidade e validação live CAP.
 - A04: destinos de redirecionamento revalidados, downgrade HTTPS bloqueado e IPs literais não globais rejeitados; testes de regressão aprovados no commit `4e90017`. Restrição para hostname que resolve a IP privado e DNS rebinding ainda não implementada.
 - A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
 - A02 e A05 continuam pendentes de análise/decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP/IBGE passaram no commit `3041ff6`.
@@ -105,8 +106,7 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 1. Preservar o resultado verde da CI para A06 e A08 ao continuar alterações.
 2. Exercitar falha de transporte INMET e documentar recuperação manual, sem retransmissão silenciosa.
 3. Confirmar se cancelamentos CAP precisam ser transmitidos aos nós Meshtastic.
-4. Aguardar e confirmar CI das alterações recentes de limites para arquivos locais.
-5. Decidir a arquitetura de mitigação SSRF por hostname: allowlist de destinos ou resolução DNS validada e vinculada à conexão, idealmente com egress restrito. Não considerar a validação atual proteção SSRF completa.
+4. Decidir a arquitetura de mitigação SSRF por hostname: allowlist de destinos ou resolução DNS validada e vinculada à conexão, idealmente com egress restrito. Não considerar a validação atual proteção SSRF completa.
 
 ## Limitações
 

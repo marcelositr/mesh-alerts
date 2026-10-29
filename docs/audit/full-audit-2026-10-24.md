@@ -12,6 +12,14 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 
 ## Achados priorizados
 
+### A10 — Seções de configuração YAML com tipo incorreto geravam exceção não tratada [CORRIGIDO, VALIDAÇÃO CI PENDENTE]
+- **Área:** `src/mesh_alerts/config.py` e `tests/test_config.py`.
+- **Prioridade:** P3, robustez operacional.
+- **Evidência:** se uma seção como `regiao`, `meshtastic`, `servico`, `fontes` ou `inmet` fosse configurada como lista ou escalar, a mesclagem podia substituir o objeto esperado e causar `TypeError` em vez de um erro de configuração claro.
+- **Correção aplicada:** as seções devem ser objetos YAML; entradas com tipo incorreto agora geram `ConfigError` com indicação da seção.
+- **Regressão adicionada:** teste parametrizado para os cinco tipos de seção.
+- **Validação:** os workflows estão sendo executados na branch de auditoria para o commit que inclui a regressão; registrar o resultado final após conclusão.
+
 ### A01 — Configuração carregada no momento da importação [CORRIGIDO, CI PASSOU]
 - **Área:** `src/mesh_alerts/region.py`
 - **Prioridade original:** P2, portabilidade/CLI.

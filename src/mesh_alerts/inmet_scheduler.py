@@ -44,6 +44,42 @@ def _connect(database: str | Path) -> sqlite3.Connection:
     return connection
 
 
+def list_bulletin_status(
+    database: str | Path,
+    *,
+    local_date: str | None = None,
+) -> list[dict[str, str | None]]:
+    """Return persisted delivery records for operator reconciliation; never sends."""
+    connection = _connect(database)
+    try:
+        if local_date is None:
+            rows = connection.execute(
+                """SELECT local_date, period, municipality_code, status, updated_at, detail
+                   FROM inmet_bulletins
+                   ORDER BY local_date DESC, period, municipality_code"""
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """SELECT local_date, period, municipality_code, status, updated_at, detail
+                   FROM inmet_bulletins WHERE local_date=?
+                   ORDER BY period, municipality_code""",
+                (local_date,),
+            ).fetchall()
+        return [
+            {
+                "local_date": row[0],
+                "period": row[1],
+                "municipality_code": row[2],
+                "status": row[3],
+                "updated_at": row[4],
+                "detail": row[5],
+            }
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
 def get_due_schedule_slot(
     config: dict[str, Any], now: datetime | None = None
 ) -> tuple[str, str] | None:

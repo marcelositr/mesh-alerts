@@ -214,7 +214,7 @@ def get_active_alert_entries(
         if sent_by_key.get(ref_key) == ref_sent:
             suppressed.add(ref_key)
 
-    active: list[tuple[ET.Element, ET.Element]] =
+    active: list[tuple[ET.Element, ET.Element]] = []
     for entry, alert, msg_type, key in records:
         if msg_type == "Cancel" or key in suppressed:
             continue

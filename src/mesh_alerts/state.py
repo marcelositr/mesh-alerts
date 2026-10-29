@@ -166,8 +166,8 @@ class AlertStateStore:
         """Persist one CAP message and enqueue its notification at most once.
 
         Returns one of: 'queued', 'recorded', 'duplicate', 'conflict',
-        'cancelled', or 'expired'. CAP references are (sender, identifier)
-        pairs; the original reference timestamp can be stored in payload.
+        'cancelled', or 'expired'. Timestamped reference triples are checked
+        against the stored message's sent time before changing lifecycle state.
         """
         sender = sender.strip()
         identifier = identifier.strip()
@@ -212,7 +212,14 @@ class AlertStateStore:
             "sent": sent_dt.isoformat(),
             "msg_type": msg_type,
             "payload": payload,
-            "references": sorted((sender, identifier, sent.isoformat() if sent else None) for sender, identifier, sent in normalized_references),
+            "references": sorted(
+                (
+                    sender,
+                    identifier,
+                    sent.isoformat() if sent else None,
+                )
+                for sender, identifier, sent in normalized_references
+            ),
             "expires_at": expires_dt.isoformat() if expires_dt else None,
             "matches_region": bool(matches_region),
             "is_current": bool(is_current),

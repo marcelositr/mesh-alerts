@@ -155,7 +155,7 @@ class AlertStateStore:
         sent: str,
         msg_type: str,
         payload: dict[str, Any],
-        references: Sequence[tuple[str, str]] = (),
+        references: Sequence[tuple[str, str] | tuple[str, str, str | datetime]] = (),
         expires_at: str | None = None,
         matches_region: bool,
         is_current: bool = True,
@@ -181,13 +181,29 @@ class AlertStateStore:
         if sent_dt > now_dt:
             raise ValueError("CAP sent timestamp is in the future")
         now_text = now_dt.isoformat()
-        normalized_references = []
-        for ref_sender, ref_identifier in references:
+        normalized_references: list[tuple[str, str, datetime | None]] = []
+        for reference in references:
+            if len(reference) == 2:
+                ref_sender, ref_identifier = reference
+                ref_sent = None
+            elif len(reference) == 3:
+                ref_sender, ref_identifier, raw_ref_sent = reference
+                ref_sent = (
+                    _parse_aware_datetime(raw_ref_sent, "reference sent")
+                    if isinstance(raw_ref_sent, str)
+                    else raw_ref_sent
+                )
+                if ref_sent is not None and ref_sent.tzinfo is None:
+                    raise ValueError("reference sent timestamp must include a timezone")
+                if ref_sent is not None:
+                    ref_sent = ref_sent.astimezone(timezone.utc)
+            else:
+                raise ValueError("CAP references must contain sender, identifier, and optional sent timestamp")
             ref_sender = ref_sender.strip()
             ref_identifier = ref_identifier.strip()
             if not ref_sender or not ref_identifier:
                 raise ValueError("CAP references require sender and identifier")
-            normalized_references.append((ref_sender, ref_identifier))
+            normalized_references.append((ref_sender, ref_identifier, ref_sent))
 
         payload_json = _json_dump(payload)
         canonical = _json_dump({
@@ -196,7 +212,7 @@ class AlertStateStore:
             "sent": sent_dt.isoformat(),
             "msg_type": msg_type,
             "payload": payload,
-            "references": sorted(normalized_references),
+            "references": sorted((sender, identifier, sent.isoformat() if sent else None) for sender, identifier, sent in normalized_references),
             "expires_at": expires_dt.isoformat() if expires_dt else None,
             "matches_region": bool(matches_region),
             "is_current": bool(is_current),
@@ -214,35 +230,42 @@ class AlertStateStore:
 
             affected_local_alert = False
             if msg_type in ("Update", "Cancel"):
-                for ref_sender, ref_identifier in normalized_references:
+                for ref_sender, ref_identifier, ref_sent in normalized_references:
                     previous = connection.execute(
-                        """SELECT matches_region, lifecycle_state
+                        """SELECT sent, matches_region
                            FROM cap_alerts WHERE sender=? AND identifier=?""",
                         (ref_sender, ref_identifier),
                     ).fetchone()
+                    # A timestamped reference must identify the exact stored CAP
+                    # message, not merely reuse its sender/identifier pair.
+                    if previous and ref_sent is not None:
+                        previous_sent = _parse_aware_datetime(previous["sent"], "stored sent")
+                        if previous_sent != ref_sent:
+                            continue
                     if previous and previous["matches_region"]:
                         affected_local_alert = True
-                    connection.execute(
-                        """UPDATE cap_alerts
-                           SET active=0, lifecycle_state=?
-                           WHERE sender=? AND identifier=?""",
-                        (
-                            "cancelled" if msg_type == "Cancel" else "superseded",
-                            ref_sender,
-                            ref_identifier,
-                        ),
-                    )
-                    # Do not leave an older notification queued after a referenced
-                    # alert is superseded or cancelled.
-                    connection.execute(
-                        """UPDATE outbox
-                           SET status='failed', updated_at=?,
-                               last_error='Alert superseded or cancelled before dispatch'
-                           WHERE sender=? AND identifier=?
-                             AND action IN ('alert', 'update')
-                             AND status='pending'""",
-                        (now_text, ref_sender, ref_identifier),
-                    )
+                    if previous:
+                        connection.execute(
+                            """UPDATE cap_alerts
+                               SET active=0, lifecycle_state=?
+                               WHERE sender=? AND identifier=?""",
+                            (
+                                "cancelled" if msg_type == "Cancel" else "superseded",
+                                ref_sender,
+                                ref_identifier,
+                            ),
+                        )
+                        # Do not leave an older notification queued after a referenced
+                        # alert is superseded or cancelled.
+                        connection.execute(
+                            """UPDATE outbox
+                               SET status='failed', updated_at=?,
+                                   last_error='Alert superseded or cancelled before dispatch'
+                               WHERE sender=? AND identifier=?
+                                 AND action IN ('alert', 'update')
+                                 AND status='pending'""",
+                            (now_text, ref_sender, ref_identifier),
+                        )
 
             active = not is_expired and msg_type != "Cancel" and bool(is_current)
             lifecycle_state = (
@@ -261,7 +284,14 @@ class AlertStateStore:
                     int(bool(matches_region)), int(active), lifecycle_state, now_text,
                 ),
             )
-            for ref_sender, ref_identifier in normalized_references:
+            for ref_sender, ref_identifier, ref_sent in normalized_references:
+                if ref_sent is not None:
+                    previous = connection.execute(
+                        "SELECT sent FROM cap_alerts WHERE sender=? AND identifier=?",
+                        (ref_sender, ref_identifier),
+                    ).fetchone()
+                    if previous and _parse_aware_datetime(previous["sent"], "stored sent") != ref_sent:
+                        continue
                 connection.execute(
                     """INSERT INTO cap_references
                        (alert_sender, alert_identifier, referenced_sender, referenced_identifier)

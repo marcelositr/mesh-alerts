@@ -123,7 +123,13 @@ def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
     else:
         selected_feed_url = feed_url or load_config()["fontes"]["feed_cap"]
         validate_http_url(selected_feed_url)
-        request = urllib.request.Request(selected_feed_url, headers={"User-Agent": "mesh-alerts/0.1"})
+        request = urllib.request.Request(
+            selected_feed_url,
+            headers={
+                "User-Agent": "mesh-alerts/0.1",
+                "Accept-Encoding": "gzip",
+            },
+        )
         data = baixar_com_retentativas(request, "feed CAP", tentativas=tentativas, timeout=timeout)
     if data[:2] == bytes((0x1f, 0x8b)):
         data = _decompress_gzip_limited(data)
@@ -377,6 +383,7 @@ def main(argv=None):
     entries = root.findall("a:entry", NS)
     alertas, expirados = active_alert_entries(root, agora)
     achados, avisos_por_alerta = {}, {}
+    diagnosticos_geometria = []
     circulos = alertas_com_geometria_problemática = total_geometrias_problematicas = 0
     for entry, alert in alertas:
         ident = alert.findtext("c:identifier", default="sem-id", namespaces=NS)
@@ -385,13 +392,16 @@ def main(argv=None):
         if avisos_geometria:
             alertas_com_geometria_problemática += 1
             total_geometrias_problematicas += len(avisos_geometria)
+            diagnosticos_geometria.extend(
+                (titulo, ident, aviso) for aviso in avisos_geometria
+            )
         cidades, _, circulos_do_alerta = intersecting_municipalities(alert, limites, municipios, agora)
         circulos += circulos_do_alerta
         if cidades:
             achados[ident] = (titulo, sorted(cidades))
-            avisos = avisos_geometria + avisos_metadados_geograficos(alert, municipios)
-            if avisos:
-                avisos_por_alerta[ident] = avisos
+            avisos_metadados = avisos_metadados_geograficos(alert, municipios)
+            if avisos_metadados:
+                avisos_por_alerta[ident] = avisos_metadados
 
     print(f"Entradas no feed: {len(entries)}")
     print(f"Alertas vigentes examinados: {len(alertas)}")
@@ -399,12 +409,19 @@ def main(argv=None):
     print(
         "Diagnóstico CAP: "
         f"{total_geometrias_problematicas} geometrias poligonais com problemas "
-        f"em {alertas_com_geometria_problemática} alertas vigentes; detalhes listados apenas para alertas com interseção"
+        f"em {alertas_com_geometria_problemática} alertas vigentes; "
+        "até 20 detalhes são exibidos abaixo"
     )
+    for titulo, ident, aviso in diagnosticos_geometria[:20]:
+        print(f"  GEOMETRIA: {titulo} [{ident}]: {aviso}")
+    if len(diagnosticos_geometria) > 20:
+        print(
+            f"  ... {len(diagnosticos_geometria) - 20} diagnóstico(s) adicional(is) omitido(s)"
+        )
     for ident, (titulo, cidades) in sorted(achados.items()):
         print(f"- {titulo} [{ident}]: {', '.join(cidades)}")
         for aviso in avisos_por_alerta.get(ident, []):
-            print(f"  NOTA DE METADADOS/GEOMETRIA: {aviso}")
+            print(f"  NOTA DE METADADOS: {aviso}")
     print(f"Blocos de informação expirados ignorados: {expirados}")
     print(f"Áreas circulares CAP analisadas: {circulos}")
     print("Nota: círculos são aproximados por polígonos geodésicos; limites municipais vêm do IBGE.")

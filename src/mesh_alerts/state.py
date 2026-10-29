@@ -229,11 +229,60 @@ class AlertStateStore:
 
         with self._transaction() as connection:
             existing = connection.execute(
-                "SELECT content_hash FROM cap_alerts WHERE sender=? AND identifier=?",
+                """SELECT content_hash, sent, msg_type, payload_json, expires_at,
+                          matches_region, active
+                   FROM cap_alerts WHERE sender=? AND identifier=?""",
                 (sender, identifier),
             ).fetchone()
             if existing:
-                return "duplicate" if existing["content_hash"] == content_hash else "conflict"
+                if existing["content_hash"] == content_hash:
+                    return "duplicate"
+
+                # Region membership and currentness are derived from configuration
+                # and wall-clock time, not immutable CAP content. Refresh those
+                # fields for an unchanged Alert instead of treating it as a conflict.
+                stored_payload = json.loads(existing["payload_json"])
+                comparable_stored_payload = dict(stored_payload)
+                comparable_new_payload = dict(payload)
+                comparable_stored_payload.pop("cities", None)
+                comparable_new_payload.pop("cities", None)
+                same_source_alert = (
+                    msg_type == "Alert"
+                    and existing["msg_type"] == "Alert"
+                    and not normalized_references
+                    and existing["sent"] == sent_dt.isoformat()
+                    and existing["expires_at"] == (expires_dt.isoformat() if expires_dt else None)
+                    and comparable_stored_payload == comparable_new_payload
+                )
+                if not same_source_alert:
+                    return "conflict"
+
+                active = not is_expired and bool(is_current)
+                lifecycle_state = (
+                    "expired" if is_expired else "active" if active else "inactive"
+                )
+                connection.execute(
+                    """UPDATE cap_alerts
+                       SET content_hash=?, payload_json=?, expires_at=?,
+                           matches_region=?, active=?, lifecycle_state=?, received_at=?
+                       WHERE sender=? AND identifier=?""",
+                    (
+                        content_hash, payload_json,
+                        expires_dt.isoformat() if expires_dt else None,
+                        int(bool(matches_region)), int(active), lifecycle_state, now_text,
+                        sender, identifier,
+                    ),
+                )
+                if not active:
+                    connection.execute(
+                        """UPDATE outbox
+                           SET status='failed', updated_at=?,
+                               last_error='Alert expired or no longer current'
+                           WHERE sender=? AND identifier=? AND status='pending'
+                             AND action IN ('alert', 'update')""",
+                        (now_text, sender, identifier),
+                    )
+                return "expired" if is_expired else "recorded"
 
             affected_local_alert = False
             if msg_type in ("Update", "Cancel"):

@@ -38,7 +38,7 @@ class NetworkRetryTests(unittest.TestCase):
                 return b"ok"
 
         with patch(
-            "mesh_alerts.boundaries.urllib.request.urlopen",
+            "mesh_alerts.boundaries.open_http_url",
             side_effect=[urllib.error.URLError("timed out"), Response()],
         ) as urlopen, patch("mesh_alerts.boundaries.time.sleep"):
             data = download_with_retries(Request("https://example.test"), "fonte de teste")
@@ -48,7 +48,7 @@ class NetworkRetryTests(unittest.TestCase):
 
     def test_raises_after_all_retries_fail(self):
         with patch(
-            "mesh_alerts.boundaries.urllib.request.urlopen",
+            "mesh_alerts.boundaries.open_http_url",
             side_effect=urllib.error.URLError("timed out"),
         ) as urlopen, patch("mesh_alerts.boundaries.time.sleep"):
             with self.assertRaisesRegex(RuntimeError, "após 3 tentativas"):

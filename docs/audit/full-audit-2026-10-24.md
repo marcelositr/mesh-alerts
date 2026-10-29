@@ -52,14 +52,14 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - **Recomendação:** confirmar explicitamente o requisito operacional. Se os destinatários precisam receber revogações, definir formato e prioridade para uma mensagem de cancelamento.
 - **Observação:** comportamento intencional não é, por si só, bug; precisa de decisão de produto e segurança operacional.
 
-### A06 — Hash de deduplicação misturava conteúdo CAP com estado derivado [CORRIGIDO, CI PENDENTE]
+### A06 — Hash de deduplicação misturava conteúdo CAP com estado derivado [CORRIGIDO, CI PASSOU]
 - **Área:** `src/mesh_alerts/state.py`
 - **Prioridade original:** P2 provisória, consistência de estado.
 - **Evidência original:** o hash canônico incluía `matches_region` e `is_current`; para uma identidade já persistida, uma mudança nesses valores podia retornar `conflict` sem atualizar o estado.
 - **Correção aplicada:** para um alerta `Alert` já conhecido, quando remetente, identificador, envio, expiração e conteúdo de origem permanecem iguais, a persistência atualiza os campos derivados e o hash em vez de tratar a mudança de estado temporal como conflito. A comparação ignora a lista derivada de cidades. Quando o alerta deixa de estar vigente, mensagens pendentes são invalidadas.
 - **Limite da correção:** a atualização automática foi deliberadamente restrita a mensagens `Alert` sem referências, para não confundir mudanças legítimas de conteúdo em atualizações/cancelamentos com mudanças de estado derivado.
 - **Regressão adicionada:** processar um alerta, reprocessá-lo após a expiração e confirmar estado `expired`, `active=0` e ausência de mensagens pendentes.
-- **Validação:** aguardando workflows CI do commit que contém a correção.
+- **Validação:** teste de regressão passou nos workflows Python unit tests (Python 3.10, 3.11, 3.12 e 3.13, incluindo build do pacote) e security/quality no commit `3041ff6`.
 
 ### A07 — Arquivos TXT podem ser gravados antes da aceitação persistente [CORRIGIDO, CI PASSOU]
 - **Área:** `src/mesh_alerts/service.py`
@@ -96,12 +96,11 @@ A revisão identificou riscos e lacunas de comportamento que merecem testes diri
 - A03: limites de leitura HTTP e descompressão gzip implementados; testes de regressão aprovados na CI.
 - A04: destinos de redirecionamento revalidados e downgrade HTTPS bloqueado; testes de regressão aprovados na CI. Restrição por host/endereço ainda não implementada.
 - A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
-- A02 e A05 continuam pendentes de análise/decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; a validação CI está pendente.
+- A02 e A05 continuam pendentes de análise/decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP/IBGE passaram no commit `3041ff6`.
 
 ## Próximos passos
 
-1. Validar via CI os testes de A08 para supressão no feed e estado SQLite.
-2. Validar via CI a regressão de A06 para reprocessamento após expiração.
+1. Preservar o resultado verde da CI para A06 e A08 ao continuar alterações.
 3. Exercitar falha de transporte INMET e documentar recuperação manual, sem retransmissão silenciosa.
 4. Confirmar se cancelamentos CAP precisam ser transmitidos aos nós Meshtastic.
 5. Avaliar a necessidade operacional de bloquear redirecionamentos para hosts privados/loopback e limitar também entradas de arquivos locais.

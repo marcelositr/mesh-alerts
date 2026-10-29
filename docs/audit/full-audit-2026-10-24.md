@@ -27,7 +27,7 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - **Mitigação aplicada:** novo comando somente leitura `mesh-alerts-inmet --status --database <caminho>` lista data, período, código municipal, estado, horário e detalhe. Não abre interface de rádio nem transmite. O caminho de envio automático continua sem retry de registros existentes.
 - **Procedimento operacional:** consultar o status; verificar logs do dispositivo/rádio e confirmar com operadores receptores se o boletim chegou; se a entrega continuar incerta, não retransmitir automaticamente. Qualquer reenvio deve ser uma decisão operacional explícita e documentada.
 - **Regressão adicionada:** força falha do transporte e verifica que os registros `failed` e seus detalhes são exibidos pela função de consulta.
-- **Validação:** workflows Python unit tests, security/quality e live CAP/IBGE passaram no commit `4e90017` para as alterações anteriores de A02/A04. As mudanças mais recentes em A03 ainda aguardam CI.
+- **Validação:** workflows Python unit tests, security/quality e live CAP passaram no commit `4e90017` para as alterações anteriores de A02/A04. Para A03, os testes e checks posteriores passaram no commit `8571233`; o job `ibge-live-probe` é separado e foi ignorado conforme a configuração do workflow.
 
 ### A03 — Leitura HTTP e descompressão gzip sem limite explícito de tamanho [MITIGADO, CI PASSOU]
 - **Área:** `src/mesh_alerts/region.py`
@@ -80,7 +80,7 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - **Evidência original:** `parse_reference_keys()` validava o terceiro componente, mas retornava apenas remetente/identificador; tanto a seleção do feed quanto a persistência perdiam o timestamp.
 - **Correção aplicada:** criado `parse_reference_records()`, que preserva o timestamp normalizado em UTC. A seleção de alertas só suprime uma mensagem quando remetente, identificador e timestamp enviado correspondem. O serviço passa as referências com timestamp ao estado persistente, que compara o horário com o registro local antes de invalidar alertas e mensagens pendentes. A API antiga que retorna pares foi mantida para compatibilidade.
 - **Regressões adicionadas:** referência no feed com timestamp divergente não suprime o alerta original; referência divergente no estado SQLite não desativa o alerta nem remove sua mensagem pendente.
-- **Validação:** testes de unidade, análise de segurança/qualidade e validação live CAP/IBGE passaram no commit `3041ff6`.
+- **Validação:** testes de unidade, análise de segurança/qualidade e validação live CAP passaram no commit `3041ff6`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ## Controles positivos observados
 
@@ -101,14 +101,14 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - A03: limites de leitura HTTP, arquivo local e descompressão gzip implementados; regressões HTTP/gzip e arquivos locais adicionadas; CI passou no commit `8571233` em Python 3.10-3.13, build do pacote, segurança/qualidade e validação live CAP.
 - A04: resolução DNS validada no caminho de conexão, endereços não públicos e respostas DNS mistas rejeitados, e socket conectado ao endereço exato validado; regressões adicionadas para hostname privado, DNS misto e pinning. CI passou no commit `6e54da2`; controles de egress continuam recomendados.
 - A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
-- A02 e A05 continuam pendentes de análise/decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP/IBGE passaram no commit `3041ff6`.
+- A02 e A05 continuam pendentes de análise/decisão funcional. A06 e A08 foram corrigidos com regressões adicionadas; os workflows de testes, segurança/qualidade e validação live CAP passaram no commit `3041ff6`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
 ## Próximos passos
 
 1. Preservar o resultado verde da CI para A06 e A08 ao continuar alterações.
 2. Exercitar falha de transporte INMET e documentar recuperação manual, sem retransmissão silenciosa.
 3. Confirmar se cancelamentos CAP precisam ser transmitidos aos nós Meshtastic.
-4. Confirmar CI do A04 e avaliar controles de egress/allowlist adequados ao ambiente de implantação. Não considerar validação em nível de aplicação substituta de defesa de rede.
+4. Avaliar controles de egress/allowlist adequados ao ambiente de implantação. Não considerar validação em nível de aplicação substituta de defesa de rede.
 
 ## Limitações
 

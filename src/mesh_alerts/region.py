@@ -3,6 +3,7 @@
 
 import argparse
 import gzip
+import io
 import json
 import sys
 import time
@@ -20,6 +21,21 @@ from shapely.validation import explain_validity
 from .config import ConfigError, load_config, municipality_map
 from .cap import NS, active_alert_entries, info_is_current, intersecting_municipalities, polygon_from_cap
 
+MAX_HTTP_RESPONSE_BYTES = 16 * 1024 * 1024
+MAX_DECOMPRESSED_BYTES = 64 * 1024 * 1024
+
+
+def _decompress_gzip_limited(data: bytes) -> bytes:
+    """Decompress gzip input without allowing unbounded expansion."""
+    with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
+        result = stream.read(MAX_DECOMPRESSED_BYTES + 1)
+    if len(result) > MAX_DECOMPRESSED_BYTES:
+        raise ValueError(
+            f"Conteúdo gzip excede o limite de {MAX_DECOMPRESSED_BYTES} bytes"
+        )
+    return result
+
+
 def _default_municipalities():
     """Load defaults only when a caller actually needs them."""
     return municipality_map(load_config())
@@ -30,7 +46,13 @@ def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
     for tentativa in range(1, tentativas + 1):
         try:
             with open_http_url(request, timeout=timeout) as response:
-                return response.read()
+                data = response.read(MAX_HTTP_RESPONSE_BYTES + 1)
+                if len(data) > MAX_HTTP_RESPONSE_BYTES:
+                    raise ValueError(
+                        f"Resposta de {descricao} excede o limite de "
+                        f"{MAX_HTTP_RESPONSE_BYTES} bytes"
+                    )
+                return data
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             ultimo_erro = exc
             if tentativa == tentativas:
@@ -92,7 +114,7 @@ def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
         request = urllib.request.Request(selected_feed_url, headers={"User-Agent": "mesh-alerts/0.1"})
         data = baixar_com_retentativas(request, "feed CAP", tentativas=tentativas, timeout=timeout)
     if data[:2] == bytes((0x1f, 0x8b)):
-        data = gzip.decompress(data)
+        data = _decompress_gzip_limited(data)
     return ET.fromstring(data)
 
 

@@ -86,6 +86,23 @@ class CapValidationTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "excede o limite"):
                     load_municipal_boundaries_from_file(path, {})
 
+    def test_municipal_boundary_gzip_response_rejects_excessive_expansion(self):
+        import gzip
+
+        compressed = gzip.compress(b"x" * 100)
+        municipalities = {"3524105": "Ituverava"}
+        with patch("mesh_alerts.region.MAX_DECOMPRESSED_BYTES", 10):
+            with patch(
+                "mesh_alerts.region.baixar_com_retentativas",
+                return_value=compressed,
+            ):
+                with self.assertRaisesRegex(ValueError, "excede o limite"):
+                    load_municipal_boundaries(
+                        municipalities,
+                        "https://example.test/malhas/municipio",
+                        tentativas=1,
+                    )
+
     def test_warns_when_cap_polygon_is_invalid_before_repair(self):
         alert = ET.fromstring(
             '<c:alert xmlns:c="urn:oasis:names:tc:emergency:cap:1.2"><c:info><c:area>'

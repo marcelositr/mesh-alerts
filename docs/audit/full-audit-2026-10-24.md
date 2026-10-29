@@ -1,0 +1,143 @@
+# Auditoria técnica: mesh-alerts
+
+- Data: 2026-10-24
+- Branch de trabalho: `audit/full-audit-2026-10-24`
+- Escopo: revisão estática do código-fonte, testes existentes e regressões validadas pelos workflows do GitHub Actions.
+- Estado: correções e regressões priorizadas verificadas nos workflows configurados; a decisão operacional de A05 foi confirmada: cancelamentos CAP não devem gerar transmissão de rádio. Esta revisão não substitui validação independente no ambiente de implantação.
+- Restrição operacional: esta auditoria não altera a branch `main`, não abre pull request e não realiza transmissão via rádio.
+
+## Resumo executivo
+
+A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adicionadas regressões para os principais cenários. No commit final `bf3b2dc`, os workflows de testes (Python 3.10–3.13 e build), segurança/qualidade e validação live CAP concluíram com sucesso. Isso confirma os checks configurados, não a ausência de defeitos nem a segurança de toda a infraestrutura. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+
+## Achados priorizados
+
+### A10 — Seções de configuração YAML com tipo incorreto geravam exceção não tratada [CORRIGIDO, CI PASSOU]
+- **Área:** `src/mesh_alerts/config.py` e `tests/test_config.py`.
+- **Prioridade:** P3, robustez operacional.
+- **Evidência:** se uma seção como `regiao`, `meshtastic`, `servico`, `fontes` ou `inmet` fosse configurada como lista ou escalar, a mesclagem podia substituir o objeto esperado e causar `TypeError` em vez de um erro de configuração claro.
+- **Correção aplicada:** as seções devem ser objetos YAML; entradas com tipo incorreto agora geram `ConfigError` com indicação da seção.
+- **Regressão adicionada:** teste parametrizado para os cinco tipos de seção.
+- **Validação:** os workflows de testes/build, segurança/qualidade e validação live CAP passaram no commit final `bf3b2dc`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+
+### A01 — Configuração carregada no momento da importação [CORRIGIDO, CI PASSOU]
+- **Área:** `src/mesh_alerts/region.py`
+- **Prioridade original:** P2, portabilidade/CLI.
+- **Evidência original:** `DEFAULT_CONFIG = load_config()` no escopo do módulo fazia a configuração ser carregada durante a importação.
+- **Correção aplicada:** a configuração padrão e os municípios agora são carregados somente quando necessários.
+- **Regressão coberta:** `tests/test_region_import.py` importa `mesh_alerts.region` a partir de um diretório temporário.
+- **Validação:** workflow de testes passou em Python 3.10, 3.11, 3.12 e 3.13 no commit `a623675`.
+
+### A02 — Falha de transmissão INMET exige reconciliação manual [MITIGADO]
+- **Área:** `src/mesh_alerts/inmet_scheduler.py` e `src/mesh_alerts/inmet_cli.py`.
+- **Prioridade:** P2, operação.
+- **Risco original:** uma exceção do transporte deixa registro `failed` e impede retry automático. Isso evita duplicação quando o rádio pode ter transmitido apesar de a chamada ter falhado, mas o operador precisava inspecionar SQLite manualmente.
+- **Mitigação aplicada:** novo comando somente leitura `mesh-alerts-inmet --status --database <caminho>` lista data, período, código municipal, estado, horário e detalhe. Não abre interface de rádio nem transmite. O caminho de envio automático continua sem retry de registros existentes.
+- **Procedimento operacional:** consultar o status; verificar logs do dispositivo/rádio e confirmar com operadores receptores se o boletim chegou; se a entrega continuar incerta, não retransmitir automaticamente. Qualquer reenvio deve ser uma decisão operacional explícita e documentada.
+- **Regressão adicionada:** força falha do transporte e verifica que os registros `failed` e seus detalhes são exibidos pela função de consulta.
+- **Validação:** workflows Python unit tests, security/quality e live CAP passaram no commit `4e90017` para as alterações anteriores de A02/A04. Para A03, os testes e checks posteriores passaram no commit `8571233`; o job `ibge-live-probe` é separado e foi ignorado conforme a configuração do workflow.
+
+### A03 — Leitura HTTP e descompressão gzip sem limite explícito de tamanho [MITIGADO, CI PASSOU]
+- **Área:** `src/mesh_alerts/region.py`
+- **Prioridade:** P2, resiliência.
+- **Evidência original:** leitura HTTP e descompressão gzip sem limites.
+- **Correção aplicada:** downloads usados pelo módulo `region.py` são limitados a 16 MiB; saída gzip é limitada a 64 MiB antes do parsing.
+- **Regressões adicionadas:** testes para resposta HTTP acima do limite e expansão gzip excessiva.
+- **Correção adicional:** feeds CAP locais e GeoJSON de malhas locais agora têm limite de leitura de 16 MiB. A descompressão gzip usada nas respostas do IBGE também usa o limite de saída de 64 MiB, em vez de `gzip.decompress()` sem limite.
+- **Regressões adicionadas:** arquivos locais de feed CAP e malha GeoJSON acima do limite são rejeitados; resposta gzip do caminho alternativo de malha municipal do IBGE também é testada contra expansão excessiva.
+- **Validação:** workflows Python unit tests (Python 3.10, 3.11, 3.12 e 3.13, incluindo build e testes do wheel), security/quality e live CAP passaram no commit `8571233`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow; não é uma validação ao vivo do IBGE.
+
+### A04 — Redirecionamentos HTTP e destinos de rede [MITIGADO, CI PASSOU]
+- **Área:** `src/mesh_alerts/http_utils.py`.
+- **Prioridade:** P2, condicionada à origem configurada.
+- **Correções aplicadas:** cada destino de redirecionamento é validado como HTTP(S), redirecionamentos HTTPS→HTTP são recusados, e URLs com credenciais embutidas, portas inválidas ou IPs literais não globais são bloqueadas.
+- **Mitigação SSRF adicional:** a resolução DNS ocorre no caminho de conexão; todas as respostas precisam ser IPs globais, e o socket conecta ao endereço exato validado, sem uma segunda resolução do hostname. Isso reduz o risco de DNS rebinding entre a validação e a conexão. Respostas DNS mistas, com endereços públicos e não públicos, são rejeitadas por inteiro.
+- **Comportamento de rede:** o opener não usa proxies configurados por variáveis de ambiente, pois um proxy faria a conexão real contornar a validação do destino. Os pedidos HTTP(S) deste módulo conectam diretamente ao endereço validado.
+- **Regressões adicionadas:** esquemas inválidos, downgrade HTTPS, redirect HTTPS válido, IPs IPv4/IPv6 não públicos, credenciais, porta inválida, redirect para loopback, hostname resolvendo para IP privado, resposta DNS mista e conexão ao sockaddr exato validado.
+- **Limitações restantes:** esta proteção não substitui controles de egress da infraestrutura, nem uma allowlist quando a aplicação deve consultar apenas serviços conhecidos. Endereços globalmente roteáveis também podem apontar para serviços sensíveis em redes com roteamento incomum; a política de rede deve continuar restrita ao necessário.
+- **Validação:** testes Python 3.10-3.13, build/teste do wheel, análise de segurança/qualidade e validação live CAP passaram no commit `6e54da2`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow; isso não equivale a uma validação ao vivo do IBGE.
+
+### A05 — Cancelamento CAP altera estado, mas não envia aviso de cancelamento pelo rádio [DECISÃO CONFIRMADA: NÃO TRANSMITIR]
+- **Área:** `src/mesh_alerts/service.py` e testes do serviço.
+- **Prioridade:** decisão funcional confirmada; manter o comportamento atual.
+- **Evidência estática e regressão:** `process_feed()` não cria mensagem para `msgType=Cancel`; `tests/test_service.py::test_cancel_updates_state_without_broadcasting_cancel_message` confirma que o alerta original passa a `cancelled`, as mensagens pendentes são invalidadas e nenhum texto `CANCELADO` é produzido. Este teste fixa o comportamento atual, não decide se o produto deve transmitir um cancelamento.
+- **Impacto possível:** destinatários que já receberam o alerta podem não saber que ele foi cancelado.
+- **Recomendação:** manter o comportamento atual até que o responsável operacional confirme o requisito. Se os destinatários precisam receber revogações, especificar antes da implementação: texto inequívoco de cancelamento, identificação do alerta original, prioridade, tratamento de cancelamento recebido após envio do alerta, deduplicação e política para destinos/canais. Um aviso de cancelamento não deve ser tratado como um alerta comum nem retransmitido silenciosamente.
+- **Decisão confirmada pelo responsável:** cancelamentos CAP devem apenas atualizar o estado interno e invalidar notificações pendentes. Não enviar mensagem de cancelamento pelo Meshtastic. Não implementar transmissão para `msgType=Cancel`.
+
+### A06 — Hash de deduplicação misturava conteúdo CAP com estado derivado [CORRIGIDO, CI PASSOU]
+- **Área:** `src/mesh_alerts/state.py`
+- **Prioridade original:** P2 provisória, consistência de estado.
+- **Evidência original:** o hash canônico incluía `matches_region` e `is_current`; para uma identidade já persistida, uma mudança nesses valores podia retornar `conflict` sem atualizar o estado.
+- **Correção aplicada:** para um alerta `Alert` já conhecido, quando remetente, identificador, envio, expiração e conteúdo de origem permanecem iguais, a persistência atualiza os campos derivados e o hash em vez de tratar a mudança de estado temporal como conflito. A comparação ignora a lista derivada de cidades. Quando o alerta deixa de estar vigente, mensagens pendentes são invalidadas.
+- **Limite da correção:** a atualização automática foi deliberadamente restrita a mensagens `Alert` sem referências, para não confundir mudanças legítimas de conteúdo em atualizações/cancelamentos com mudanças de estado derivado.
+- **Regressão adicionada:** processar um alerta, reprocessá-lo após a expiração e confirmar estado `expired`, `active=0` e ausência de mensagens pendentes.
+- **Validação:** teste de regressão passou nos workflows Python unit tests (Python 3.10, 3.11, 3.12 e 3.13, incluindo build do pacote) e security/quality no commit `3041ff6`.
+
+### A07 — Arquivos TXT podem ser gravados antes da aceitação persistente [CORRIGIDO, CI PASSOU]
+- **Área:** `src/mesh_alerts/service.py`
+- **Prioridade:** P2, consistência entre artefatos.
+- **Evidência original:** TXT era escrito antes da decisão persistente, permitindo divergência em caso de `conflict`.
+- **Correção aplicada:** TXT só é escrito depois de `process_cap_alert()` retornar `queued`; duplicatas e conflitos não sobrescrevem arquivos.
+- **Regressão coberta:** `test_conflicting_alert_does_not_overwrite_existing_text_files` compara os arquivos antes e depois do conflito.
+- **Validação:** workflow de testes passou em Python 3.10, 3.11, 3.12 e 3.13 no commit `a623675`.
+
+### A08 — Referências CAP descartavam o timestamp [CORRIGIDO, CI PASSOU]
+- **Área:** `src/mesh_alerts/cap.py`, `src/mesh_alerts/service.py` e `src/mesh_alerts/state.py`.
+- **Prioridade original:** P2 provisória, integridade de protocolo.
+- **Evidência original:** `parse_reference_keys()` validava o terceiro componente, mas retornava apenas remetente/identificador; tanto a seleção do feed quanto a persistência perdiam o timestamp.
+- **Correção aplicada:** criado `parse_reference_records()`, que preserva o timestamp normalizado em UTC. A seleção de alertas só suprime uma mensagem quando remetente, identificador e timestamp enviado correspondem. O serviço passa as referências com timestamp ao estado persistente, que compara o horário com o registro local antes de invalidar alertas e mensagens pendentes. A API antiga que retorna pares foi mantida para compatibilidade.
+- **Regressões adicionadas:** referência no feed com timestamp divergente não suprime o alerta original; referência divergente no estado SQLite não desativa o alerta nem remove sua mensagem pendente.
+- **Validação:** testes de unidade, análise de segurança/qualidade e validação live CAP passaram no commit `3041ff6`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+
+### A09 — Endurecimento adicional das unidades systemd [OPORTUNIDADE DE HARDENING P3]
+- **Área:** `deploy/mesh-alerts.service` e `deploy/systemd/mesh-alerts-inmet.service`.
+- **Evidência:** ambas as unidades já usam usuário/grupo dedicados, `NoNewPrivileges=true`, `PrivateTmp=true`, `ProtectSystem=strict`, `ProtectHome=true`, `UMask=0077` e limitam escrita a `/var/lib/mesh-alerts`. A unidade CAP também declara `ReadWritePaths=/var/lib/mesh-alerts`.
+- **Avaliação:** os controles existentes são positivos. Como defesa em profundidade, avaliar `ProtectKernelTunables=true`, `ProtectKernelModules=true`, `ProtectControlGroups=true`, `RestrictSUIDSGID=true`, `LockPersonality=true`, `RestrictRealtime=true` e `CapabilityBoundingSet=`/ `AmbientCapabilities=` vazios, desde que testados na distribuição systemd de destino.
+- **Rede:** avaliar restrições de saída no firewall/ambiente de execução, permitindo apenas as fontes oficiais necessárias e o host Meshtastic configurado. Não aplicar uma política genérica de bloqueio sem mapear DNS, HTTPS, TCP local e os requisitos reais de implantação.
+- **Limite:** não alterei as unidades systemd nesta auditoria, porque hardening de implantação pode interromper operações em hosts cuja versão do systemd, rede e transporte não foram verificados. Tratar como checklist de implantação, não como vulnerabilidade explorada.
+
+### Revisão adicional de CI e release
+- Os workflows de testes e análise de segurança declaram permissões mínimas `contents: read`; o workflow de release separa testes/segurança do job de publicação, que recebe `contents: write` somente onde necessário.
+- As actions principais examinadas estão fixadas por SHA e os workflows de testes e análise de segurança desabilitam `persist-credentials` nos checkouts; os passos posteriores não precisam de credenciais Git. Isso reduz a exposição desnecessária do token do workflow no repositório de trabalho.
+- Os checks atuais de workflow, análise Python e varredura de segredos passaram. Isso não substitui revisão de configurações de proteção de branch, permissões do repositório e configuração do ambiente de publicação, que não são comprovadas apenas pelos arquivos versionados.
+
+## Controles positivos observados
+
+- YAML é carregado com `yaml.safe_load()`.
+- O parser do feed usa `defusedxml`.
+- Consultas SQLite são parametrizadas e o estado usa transações.
+- Nomes de arquivos de saída são derivados de hashes, não diretamente de identificadores CAP não confiáveis.
+- O envio INMET exige modo real explicitamente, e o modo de simulação não reserva entregas.
+- A outbox distingue `pending`, `sending`, `sent`, `uncertain` e `failed`.
+- Resultados incertos não são repetidos silenciosamente; há resolução explícita.
+- Mensagens pendentes expiradas ou invalidadas são marcadas antes do despacho.
+- A configuração padrão exige HTTPS para os endpoints CAP, IBGE e INMET.
+- No commit `855d8d6`, os workflows CI configurados de testes, segurança/qualidade e validação live CAP passaram. Isso confirma os checks configurados, não a ausência de defeitos.
+
+## Progresso de implementação e validação
+
+- A01: corrigido; teste de importação fora da raiz do projeto aprovado na CI.
+- A03: limites de leitura HTTP, arquivo local e descompressão gzip implementados; regressões HTTP/gzip e arquivos locais adicionadas; CI passou no commit `8571233` em Python 3.10-3.13, build do pacote, segurança/qualidade e validação live CAP.
+- A04: resolução DNS validada no caminho de conexão, endereços não públicos e respostas DNS mistas rejeitados, e socket conectado ao endereço exato validado; regressões adicionadas para hostname privado, DNS misto e pinning. CI passou no commit `6e54da2`; controles de egress continuam recomendados.
+- A07: gravação dos TXT movida para depois da aceitação persistente; teste de conflito aprovado na CI.
+- A02 está mitigado com consulta de status somente leitura e procedimento manual para reconciliação, sem retry automático. A05 está decidido: cancelamentos CAP não geram transmissão de rádio. A06 e A08 foram corrigidos com regressões adicionadas. No commit final `bf3b2dc`, os workflows configurados de testes/build, segurança/qualidade e validação live CAP passaram. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
+
+## Próximos passos
+
+1. No commit final `bf3b2dc`, a CI está verde para os workflows configurados: testes Python 3.10–3.13/build, segurança/qualidade e live CAP. `ibge-live-probe` foi ignorado, portanto não declarar validação ao vivo do IBGE.
+2. A02: manter reconciliação manual de falhas/incertezas INMET; não adicionar retry automático sem idempotência ou confirmação de entrega.
+3. A05: decisão confirmada: cancelamentos CAP atualizam o estado e invalidam pendências sem gerar transmissão. Não adicionar mensagem de cancelamento.
+4. Para implantação, avaliar controles de egress/allowlist e testar a política de rede no ambiente real. Não considerar validação em nível de aplicação substituta de defesa de rede.
+
+## Limitações
+
+- Não foi possível clonar o repositório nesta sessão por falha de resolução de `github.com`; os arquivos foram inspecionados via integração GitHub.
+- Os testes automatizados foram executados via GitHub Actions; não foi possível executar uma cópia local independente nesta sessão por falha de resolução de `github.com`.
+- Nenhuma transmissão de rádio foi executada.
+- As severidades originais são triagem estática, não avaliação de exploração confirmada.
+- Nenhum resultado de teste hipotético deve ser reportado como execução real.
+
+## Estado da branch
+
+A branch de auditoria é separada de `main`. Este relatório não autoriza merge, criação de pull request ou alteração da branch principal.

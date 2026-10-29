@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from .inmet_config import load_configuration
-from .inmet_scheduler import process_bulletin, get_due_schedule_slot
+from .inmet_scheduler import process_bulletin, get_due_schedule_slot, list_bulletin_status
 
 
 def _transport_tcp(host: str, port: int, channel: int, destination: str):
@@ -38,6 +39,10 @@ def main(argv=None) -> int:
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--database", default="data/inmet-bulletins.sqlite3")
     parser.add_argument(
+        "--status", action="store_true",
+        help="lista registros persistidos para reconciliação manual; não transmite",
+    )
+    parser.add_argument(
         "--send", action="store_true",
         help="habilita envio real; sem esta opção, apenas simula",
     )
@@ -65,6 +70,16 @@ def main(argv=None) -> int:
 
     if args.period and args.loop:
         parser.error("--period é para execução pontual; remova --loop")
+    if args.status:
+        if args.send or args.period or args.loop:
+            parser.error("--status não pode ser combinado com --send, --period ou --loop")
+        print(json.dumps(
+            list_bulletin_status(args.database),
+            ensure_ascii=False,
+            indent=2,
+        ))
+        return 0
+
     config = load_configuration(args.config)
     channel_index = args.channel_index if args.channel_index is not None else config["inmet"]["canal"]
     if not 0 <= channel_index <= 7:

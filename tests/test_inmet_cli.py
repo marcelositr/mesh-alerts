@@ -55,6 +55,30 @@ class InmetCliChannelTests(unittest.TestCase):
         self.assertTrue(process.call_args.kwargs["simulate"])
         self.assertIsNone(process.call_args.kwargs["transport_sender"])
 
+    def test_status_command_is_read_only_and_does_not_load_config_or_open_radio(self):
+        records = [{
+            "local_date": "2026-10-22",
+            "period": "manha",
+            "municipality_code": "3503000",
+            "status": "failed",
+            "updated_at": "2026-10-22T06:00:00-03:00",
+            "detail": "transport unavailable",
+        }]
+        with (
+            patch("mesh_alerts.inmet_cli.list_bulletin_status", return_value=records) as status,
+            patch("mesh_alerts.inmet_cli.load_configuration") as load_config,
+            patch("mesh_alerts.inmet_cli._transport_tcp") as transport,
+            patch("builtins.print") as output,
+        ):
+            result = main(["--status", "--database", "state.sqlite3"])
+
+        self.assertEqual(result, 0)
+        status.assert_called_once_with("state.sqlite3")
+        load_config.assert_not_called()
+        transport.assert_not_called()
+        self.assertIn('"failed"', output.call_args.args[0])
+        self.assertIn("transport unavailable", output.call_args.args[0])
+
 
 if __name__ == "__main__":
     unittest.main()

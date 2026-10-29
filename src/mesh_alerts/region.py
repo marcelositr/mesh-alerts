@@ -3,6 +3,7 @@
 
 import argparse
 import gzip
+import io
 import json
 import sys
 import time
@@ -20,10 +21,36 @@ from shapely.validation import explain_validity
 from .config import ConfigError, load_config, municipality_map
 from .cap import NS, active_alert_entries, info_is_current, intersecting_municipalities, polygon_from_cap
 
-DEFAULT_CONFIG = load_config()
-MUNICIPIOS = municipality_map(DEFAULT_CONFIG)
-FEED_URL = DEFAULT_CONFIG["fontes"]["feed_cap"]
-MALHAS_BASE_URL = DEFAULT_CONFIG["fontes"]["malhas_ibge"]
+MAX_HTTP_RESPONSE_BYTES = 16 * 1024 * 1024
+MAX_LOCAL_FILE_BYTES = 16 * 1024 * 1024
+MAX_DECOMPRESSED_BYTES = 64 * 1024 * 1024
+
+
+def _read_file_limited(path, max_bytes=None) -> bytes:
+    """Read a local input file with the current configured byte limit."""
+    if max_bytes is None:
+        max_bytes = MAX_LOCAL_FILE_BYTES
+    with Path(path).open("rb") as stream:
+        data = stream.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError(f"Arquivo {path} excede o limite de {max_bytes} bytes")
+    return data
+
+
+def _decompress_gzip_limited(data: bytes) -> bytes:
+    """Decompress gzip input without allowing unbounded expansion."""
+    with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
+        result = stream.read(MAX_DECOMPRESSED_BYTES + 1)
+    if len(result) > MAX_DECOMPRESSED_BYTES:
+        raise ValueError(
+            f"Conteúdo gzip excede o limite de {MAX_DECOMPRESSED_BYTES} bytes"
+        )
+    return result
+
+
+def _default_municipalities():
+    """Load defaults only when a caller actually needs them."""
+    return municipality_map(load_config())
 
 
 def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
@@ -31,7 +58,13 @@ def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
     for tentativa in range(1, tentativas + 1):
         try:
             with open_http_url(request, timeout=timeout) as response:
-                return response.read()
+                data = response.read(MAX_HTTP_RESPONSE_BYTES + 1)
+                if len(data) > MAX_HTTP_RESPONSE_BYTES:
+                    raise ValueError(
+                        f"Resposta de {descricao} excede o limite de "
+                        f"{MAX_HTTP_RESPONSE_BYTES} bytes"
+                    )
+                return data
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             ultimo_erro = exc
             if tentativa == tentativas:
@@ -49,7 +82,7 @@ def baixar_com_retentativas(request, descricao, tentativas=3, timeout=25):
 
 
 def limites_municipais_do_geojson(geojson, municipios=None):
-    municipios = municipios or MUNICIPIOS
+    municipios = municipios or _default_municipalities()
     if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
         raise RuntimeError("Resposta do IBGE não é um GeoJSON FeatureCollection")
     features = geojson.get("features")
@@ -86,14 +119,14 @@ def limites_municipais_do_geojson(geojson, municipios=None):
 
 def carregar_feed(caminho=None, feed_url=None, timeout=25, tentativas=3):
     if caminho:
-        data = Path(caminho).read_bytes()
+        data = _read_file_limited(caminho)
     else:
-        selected_feed_url = feed_url or FEED_URL
+        selected_feed_url = feed_url or load_config()["fontes"]["feed_cap"]
         validate_http_url(selected_feed_url)
         request = urllib.request.Request(selected_feed_url, headers={"User-Agent": "mesh-alerts/0.1"})
         data = baixar_com_retentativas(request, "feed CAP", tentativas=tentativas, timeout=timeout)
     if data[:2] == bytes((0x1f, 0x8b)):
-        data = gzip.decompress(data)
+        data = _decompress_gzip_limited(data)
     return ET.fromstring(data)
 
 
@@ -122,7 +155,7 @@ def carregar_limites(municipios, base_url, timeout=12, tentativas=2, cache_path=
                 timeout=timeout,
             )
             if data[:2] == bytes((0x1f, 0x8b)):
-                data = gzip.decompress(data)
+                data = _decompress_gzip_limited(data)
             geojson = json.loads(data.decode("utf-8"))
             if not isinstance(geojson, dict) or geojson.get("type") != "FeatureCollection":
                 raise RuntimeError(
@@ -147,7 +180,7 @@ def carregar_limites(municipios, base_url, timeout=12, tentativas=2, cache_path=
                 timeout=timeout,
             )
             if data[:2] == bytes((0x1f, 0x8b)):
-                data = gzip.decompress(data)
+                data = _decompress_gzip_limited(data)
             geojson = json.loads(data.decode("utf-8"))
             if not isinstance(geojson, dict):
                 raise RuntimeError(f"Resposta GeoJSON inválida para {nome}")
@@ -199,8 +232,8 @@ def carregar_limites(municipios, base_url, timeout=12, tentativas=2, cache_path=
 
 def carregar_limites_de_arquivo(caminho, municipios):
     try:
-        geojson = json.loads(Path(caminho).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        geojson = json.loads(_read_file_limited(caminho).decode("utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
         raise RuntimeError(f"não foi possível ler a malha municipal local {caminho}: {exc}") from exc
     return limites_municipais_do_geojson(geojson, municipios)
 

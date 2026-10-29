@@ -17,6 +17,8 @@ from mesh_alerts.region import (
     carregar_limites_de_arquivo as load_municipal_boundaries_from_file,
     avisos_metadados_geograficos as diagnose_geographic_metadata,
     avisos_poligonos_invalidos as diagnose_invalid_polygons,
+    baixar_com_retentativas,
+    _decompress_gzip_limited,
 )
 from mesh_alerts.boundaries import MUNICIPALITIES, load_municipal_boundaries_from_geojson
 
@@ -37,6 +39,25 @@ class CapValidationTests(unittest.TestCase):
     def setUp(self):
         self.now = datetime(2026, 10, 22, 18, 0, tzinfo=timezone.utc)
 
+    def test_http_download_rejects_response_over_configured_limit(self):
+        with patch("mesh_alerts.region.MAX_HTTP_RESPONSE_BYTES", 10):
+            with patch("mesh_alerts.region.open_http_url") as open_url:
+                response = open_url.return_value.__enter__.return_value
+                response.read.return_value = b"x" * 11
+                with self.assertRaisesRegex(ValueError, "excede o limite"):
+                    baixar_com_retentativas(
+                        object(), "feed de teste", tentativas=1, timeout=1
+                    )
+                response.read.assert_called_once_with(11)
+
+    def test_gzip_decompression_rejects_expansion_over_configured_limit(self):
+        import gzip
+
+        compressed = gzip.compress(b"x" * 100)
+        with patch("mesh_alerts.region.MAX_DECOMPRESSED_BYTES", 10):
+            with self.assertRaisesRegex(ValueError, "excede o limite"):
+                _decompress_gzip_limited(compressed)
+
     def info(self, fields):
         parts = "".join(f"<c:{key}>{value}</c:{key}>" for key, value in fields.items())
         return ET.fromstring(f'<c:info xmlns:c="{XML_NAMESPACES["c"]}">{parts}</c:info>')
@@ -48,6 +69,39 @@ class CapValidationTests(unittest.TestCase):
             path.write_text(xml, encoding="utf-8")
             root = load_cap_feed(path)
         self.assertEqual(root.tag, "{http://www.w3.org/2005/Atom}feed")
+
+    def test_local_cap_feed_file_rejects_oversized_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sample.xml"
+            path.write_bytes(b"x" * 11)
+            with patch("mesh_alerts.region.MAX_LOCAL_FILE_BYTES", 10):
+                with self.assertRaisesRegex(ValueError, "excede o limite"):
+                    load_cap_feed(path)
+
+    def test_local_boundary_file_rejects_oversized_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "boundaries.geojson"
+            path.write_bytes(b"{}" + b" " * 9)
+            with patch("mesh_alerts.region.MAX_LOCAL_FILE_BYTES", 10):
+                with self.assertRaisesRegex(RuntimeError, "excede o limite"):
+                    load_municipal_boundaries_from_file(path, {})
+
+    def test_municipal_boundary_gzip_response_rejects_excessive_expansion(self):
+        import gzip
+
+        compressed = gzip.compress(b"x" * 100)
+        municipalities = {"3524105": "Ituverava"}
+        with patch("mesh_alerts.region.MAX_DECOMPRESSED_BYTES", 10):
+            with patch(
+                "mesh_alerts.region.baixar_com_retentativas",
+                return_value=compressed,
+            ):
+                with self.assertRaisesRegex(ValueError, "excede o limite"):
+                    load_municipal_boundaries(
+                        municipalities,
+                        "https://example.test/malhas/municipio",
+                        tentativas=1,
+                    )
 
     def test_warns_when_cap_polygon_is_invalid_before_repair(self):
         alert = ET.fromstring(
@@ -471,6 +525,32 @@ class CapValidationTests(unittest.TestCase):
             alert, boundaries, names, self.now
         )
         self.assertEqual(cities, {"Ituverava"})
+
+    def test_mismatched_reference_timestamp_does_not_suppress_original(self):
+        xml = """<feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:c="urn:oasis:names:tc:emergency:cap:1.2">
+          <entry><title>Original</title><content><c:alert>
+            <c:sender>sender@example</c:sender><c:identifier>original-id</c:identifier>
+            <c:sent>2026-10-22T17:00:00Z</c:sent><c:status>Actual</c:status>
+            <c:msgType>Alert</c:msgType>
+            <c:info><c:headline>Alerta original</c:headline></c:info>
+          </c:alert></content></entry>
+          <entry><title>Cancelamento malformado</title><content><c:alert>
+            <c:sender>sender@example</c:sender><c:identifier>cancel-id</c:identifier>
+            <c:sent>2026-10-22T17:30:00Z</c:sent><c:status>Actual</c:status>
+            <c:msgType>Cancel</c:msgType>
+            <c:references>sender@example,original-id,2026-10-22T16:59:00Z</c:references>
+          </c:alert></content></entry>
+        </feed>"""
+        root = ET.fromstring(xml)
+        active, _expired = get_active_alert_entries(root, self.now)
+        self.assertEqual(len(active), 1)
+        self.assertEqual(
+            active[0][1].findtext("c:identifier", namespaces={
+                "c": "urn:oasis:names:tc:emergency:cap:1.2"
+            }),
+            "original-id",
+        )
 
 
 if __name__ == "__main__":

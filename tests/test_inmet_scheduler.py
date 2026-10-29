@@ -10,6 +10,7 @@ from mesh_alerts.inmet_scheduler import (
     process_bulletin,
     get_due_schedule_slot,
     get_due_period,
+    list_bulletin_status,
 )
 
 
@@ -208,6 +209,26 @@ class InmetSchedulerTests(unittest.TestCase):
         self.assertEqual(first["failed"], 2)
         self.assertEqual(second["duplicate"], 2)
         self.assertEqual(len(calls), 2)
+
+    def test_status_listing_exposes_failed_delivery_for_manual_reconciliation(self):
+        def broken(_message):
+            raise OSError("transport unavailable")
+
+        process_bulletin(
+            self.config,
+            self.database,
+            "manha",
+            now=self.now,
+            transport_sender=broken,
+            simulate=False,
+            message_builder=self.builder,
+            sleep=lambda _: None,
+        )
+        rows = list_bulletin_status(self.database, local_date="2026-10-22")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({row["status"] for row in rows}, {"failed"})
+        self.assertTrue(all(row["detail"] == "transport unavailable" for row in rows))
+        self.assertEqual(list_bulletin_status(self.database, local_date="2026-10-21"), [])
 
 
 if __name__ == "__main__":

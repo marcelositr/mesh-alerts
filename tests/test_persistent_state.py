@@ -166,6 +166,41 @@ class AlertStateStoreTests(unittest.TestCase):
         )
         self.assertEqual(len(self.store.list_outbox()), 2)
 
+    def test_reference_with_mismatched_sent_timestamp_does_not_deactivate_alert(self):
+        self.assertEqual(self.add_alert(), "queued")
+        result = self.add_alert(
+            identifier="update-mismatch",
+            msg_type="Update",
+            references=[(
+                "civil.defesa@example.gov.br",
+                "alert-001",
+                "2026-10-22T10:59:00Z",
+            )],
+            matches_region=False,
+            message_text=None,
+        )
+        self.assertEqual(result, "recorded")
+        old = self.store.get_alert("civil.defesa@example.gov.br", "alert-001")
+        self.assertEqual(old["active"], 1)
+        self.assertEqual(old["lifecycle_state"], "active")
+        self.assertEqual(len(self.store.list_outbox(status="pending")), 1)
+
+    def test_reprocessing_alert_after_expiry_refreshes_state_instead_of_conflict(self):
+        self.assertEqual(self.add_alert(expires_at=EXPIRES), "queued")
+        result = self.add_alert(
+            expires_at=EXPIRES,
+            is_current=False,
+            matches_region=False,
+            message_text=None,
+            now=datetime(2026, 10, 22, 16, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual(result, "expired")
+        stored = self.store.get_alert("civil.defesa@example.gov.br", "alert-001")
+        self.assertEqual(stored["active"], 0)
+        self.assertEqual(stored["lifecycle_state"], "expired")
+        self.assertEqual(self.store.list_outbox(status="pending"), [])
+        self.assertEqual(self.store.list_outbox(status="failed")[0]["identifier"], "alert-001")
+
 
 if __name__ == "__main__":
     unittest.main()

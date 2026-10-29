@@ -11,6 +11,20 @@ CAP_NS = "urn:oasis:names:tc:emergency:cap:1.2"
 
 
 class GeometryDiagnosticTests(unittest.TestCase):
+    def test_open_polygon_reports_automatic_ring_closure(self):
+        alert = ET.fromstring(
+            f'<c:alert xmlns:c="{CAP_NS}"><c:info><c:area>'
+            '<c:polygon>-20,-47 -20.1,-47 -20.1,-47.1</c:polygon>'
+            '</c:area></c:info></c:alert>'
+        )
+
+        warnings = avisos_poligonos_invalidos(alert)
+
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("anel não fechado", warnings[0])
+        self.assertIn("fechamento automático aplicado", warnings[0])
+        self.assertNotIn("geometria ignorada", warnings[0])
+
     def test_malformed_polygon_is_reported_instead_of_silently_skipped(self):
         alert = ET.fromstring(
             f'<c:alert xmlns:c="{CAP_NS}"><c:info><c:area>'

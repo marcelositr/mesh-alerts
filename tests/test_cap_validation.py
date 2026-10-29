@@ -17,6 +17,8 @@ from mesh_alerts.region import (
     carregar_limites_de_arquivo as load_municipal_boundaries_from_file,
     avisos_metadados_geograficos as diagnose_geographic_metadata,
     avisos_poligonos_invalidos as diagnose_invalid_polygons,
+    baixar_com_retentativas,
+    _decompress_gzip_limited,
 )
 from mesh_alerts.boundaries import MUNICIPALITIES, load_municipal_boundaries_from_geojson
 
@@ -36,6 +38,25 @@ XML_NAMESPACES = {"c": "urn:oasis:names:tc:emergency:cap:1.2"}
 class CapValidationTests(unittest.TestCase):
     def setUp(self):
         self.now = datetime(2026, 10, 22, 18, 0, tzinfo=timezone.utc)
+
+    def test_http_download_rejects_response_over_configured_limit(self):
+        with patch("mesh_alerts.region.MAX_HTTP_RESPONSE_BYTES", 10):
+            with patch("mesh_alerts.region.open_http_url") as open_url:
+                response = open_url.return_value.__enter__.return_value
+                response.read.return_value = b"x" * 11
+                with self.assertRaisesRegex(ValueError, "excede o limite"):
+                    baixar_com_retentativas(
+                        object(), "feed de teste", tentativas=1, timeout=1
+                    )
+                response.read.assert_called_once_with(11)
+
+    def test_gzip_decompression_rejects_expansion_over_configured_limit(self):
+        import gzip
+
+        compressed = gzip.compress(b"x" * 100)
+        with patch("mesh_alerts.region.MAX_DECOMPRESSED_BYTES", 10):
+            with self.assertRaisesRegex(ValueError, "excede o limite"):
+                _decompress_gzip_limited(compressed)
 
     def info(self, fields):
         parts = "".join(f"<c:{key}>{value}</c:{key}>" for key, value in fields.items())

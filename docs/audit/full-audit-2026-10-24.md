@@ -82,6 +82,18 @@ A revisão identificou riscos e lacunas que mereciam testes dirigidos. Foram adi
 - **Regressões adicionadas:** referência no feed com timestamp divergente não suprime o alerta original; referência divergente no estado SQLite não desativa o alerta nem remove sua mensagem pendente.
 - **Validação:** testes de unidade, análise de segurança/qualidade e validação live CAP passaram no commit `3041ff6`. O job `ibge-live-probe` foi ignorado conforme a configuração do workflow.
 
+### A09 — Endurecimento adicional das unidades systemd [OPORTUNIDADE DE HARDENING P3]
+- **Área:** `deploy/mesh-alerts.service` e `deploy/systemd/mesh-alerts-inmet.service`.
+- **Evidência:** ambas as unidades já usam usuário/grupo dedicados, `NoNewPrivileges=true`, `PrivateTmp=true`, `ProtectSystem=strict`, `ProtectHome=true`, `UMask=0077` e limitam escrita a `/var/lib/mesh-alerts`. A unidade CAP também declara `ReadWritePaths=/var/lib/mesh-alerts`.
+- **Avaliação:** os controles existentes são positivos. Como defesa em profundidade, avaliar `ProtectKernelTunables=true`, `ProtectKernelModules=true`, `ProtectControlGroups=true`, `RestrictSUIDSGID=true`, `LockPersonality=true`, `RestrictRealtime=true` e `CapabilityBoundingSet=`/ `AmbientCapabilities=` vazios, desde que testados na distribuição systemd de destino.
+- **Rede:** avaliar restrições de saída no firewall/ambiente de execução, permitindo apenas as fontes oficiais necessárias e o host Meshtastic configurado. Não aplicar uma política genérica de bloqueio sem mapear DNS, HTTPS, TCP local e os requisitos reais de implantação.
+- **Limite:** não alterei as unidades systemd nesta auditoria, porque hardening de implantação pode interromper operações em hosts cuja versão do systemd, rede e transporte não foram verificados. Tratar como checklist de implantação, não como vulnerabilidade explorada.
+
+### Revisão adicional de CI e release
+- Os workflows de testes e análise de segurança declaram permissões mínimas `contents: read`; o workflow de release separa testes/segurança do job de publicação, que recebe `contents: write` somente onde necessário.
+- As actions principais examinadas estão fixadas por SHA e o checkout de etapas de análise de segurança desabilita a persistência das credenciais. O workflow de testes ainda usa o comportamento padrão de persistência do checkout; como melhoria defensiva futura, pode-se definir `persist-credentials: false` também nesse workflow, após confirmar que nenhum passo depende de credenciais Git posteriores ao checkout.
+- Os checks atuais de workflow, análise Python e varredura de segredos passaram. Isso não substitui revisão de configurações de proteção de branch, permissões do repositório e configuração do ambiente de publicação, que não são comprovadas apenas pelos arquivos versionados.
+
 ## Controles positivos observados
 
 - YAML é carregado com `yaml.safe_load()`.

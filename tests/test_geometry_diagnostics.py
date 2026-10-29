@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 from urllib.request import Request
 
 from mesh_alerts.region import avisos_poligonos_invalidos
-from mesh_alerts.boundaries import download_with_retries
+from mesh_alerts.boundaries import download_with_retries, _decompress_gzip_limited
 
 CAP_NS = "urn:oasis:names:tc:emergency:cap:1.2"
 
@@ -40,6 +40,26 @@ class GeometryDiagnosticTests(unittest.TestCase):
 
 
 class NetworkRetryTests(unittest.TestCase):
+    def test_download_rejects_oversized_http_response(self):
+        with patch("mesh_alerts.boundaries.MAX_HTTP_RESPONSE_BYTES", 10):
+            with patch("mesh_alerts.boundaries.open_http_url") as open_url:
+                response = open_url.return_value.__enter__.return_value
+                response.read.return_value = b"x" * 11
+                with self.assertRaisesRegex(ValueError, "excede o limite"):
+                    download_with_retries(
+                        Request("https://example.test"),
+                        "fonte de teste",
+                        attempts=1,
+                    )
+                response.read.assert_called_once_with(11)
+
+    def test_gzip_expansion_is_bounded(self):
+        import gzip
+
+        with patch("mesh_alerts.boundaries.MAX_DECOMPRESSED_BYTES", 10):
+            with self.assertRaisesRegex(ValueError, "excede o limite"):
+                _decompress_gzip_limited(gzip.compress(b"x" * 100))
+
     def test_retries_transient_url_error_then_succeeds(self):
         class Response:
             def __enter__(self):
@@ -48,7 +68,7 @@ class NetworkRetryTests(unittest.TestCase):
             def __exit__(self, *args):
                 return False
 
-            def read(self):
+            def read(self, size=-1):
                 return b"ok"
 
         with patch(

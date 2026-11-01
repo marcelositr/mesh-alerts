@@ -199,14 +199,29 @@ def process_feed(
     return counts
 
 
-def dispatch_pending(store: AlertStateStore, host: str, port: int, channel_index: int) -> int:
+def dispatch_pending(
+    store: AlertStateStore,
+    host: str,
+    port: int,
+    channel_index: int,
+    interval_seconds: int = 3,
+    *,
+    sleep=None,
+    interface_factory=None,
+) -> int:
+    """Send queued packets with a drain interval before closing the TCP interface."""
+    if interval_seconds < 0:
+        raise ValueError("interval_seconds deve ser maior ou igual a zero")
     if not store.list_outbox(status="pending"):
         return 0
-    from meshtastic.tcp_interface import TCPInterface
+    if interface_factory is None:
+        from meshtastic.tcp_interface import TCPInterface
+        interface_factory = TCPInterface
+    sleep = sleep or time.sleep
     interface = None
     sent_count = 0
     try:
-        interface = TCPInterface(hostname=host, portNumber=port)
+        interface = interface_factory(hostname=host, portNumber=port)
         while True:
             item = store.claim_next()
             if item is None:
@@ -214,6 +229,10 @@ def dispatch_pending(store: AlertStateStore, host: str, port: int, channel_index
             try:
                 interface.sendText(item["message_text"], destinationId=item["destination"],
                                    wantAck=False, channelIndex=channel_index)
+                # sendText() queues the packet and returns before radio transmission.
+                # Keep the interface alive so the final queued packet can drain too.
+                if interval_seconds:
+                    sleep(interval_seconds)
             except Exception as exc:
                 store.mark_uncertain(item["id"], str(exc))
                 LOG.warning("Resultado incerto para o item %s via TCP: %s", item["id"], exc)
@@ -322,7 +341,10 @@ def main(argv=None) -> int:
                 invalidated = store.invalidate_stale_pending(now=datetime.now(timezone.utc))
                 if invalidated:
                     LOG.info("%s mensagem(ns) pendente(s) invalidada(s) por expiração/substituição", invalidated)
-                sent_count = dispatch_pending(store, host, port, channel)
+                sent_count = dispatch_pending(
+                    store, host, port, channel,
+                    interval_seconds=service["intervalo_entre_mensagens_segundos"],
+                )
                 if sent_count:
                     LOG.info("%s mensagem(ns) aceita(s) pelo cliente TCP", sent_count)
             except Exception:

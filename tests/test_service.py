@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from mesh_alerts.service import _safe_filename, process_feed
+from mesh_alerts.service import _safe_filename, dispatch_pending, process_feed
 from mesh_alerts.state import AlertStateStore
 
 
@@ -41,6 +41,53 @@ FEED = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 class MeshAlertsServiceTests(unittest.TestCase):
+    def test_dispatch_paces_each_packet_and_keeps_interface_open_for_final_packet(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = AlertStateStore(Path(directory) / "state.sqlite3")
+            result = store.process_cap_alert(
+                sender="civil.defesa@example.gov.br",
+                identifier="dispatch-test",
+                sent="2026-10-22T11:00:00Z",
+                msg_type="Alert",
+                payload={"headline": "Teste"},
+                matches_region=True,
+                message_text=["primeira", "segunda"],
+                now=NOW,
+            )
+            self.assertEqual(result, "queued")
+
+            class FakeInterface:
+                def __init__(self, **kwargs):
+                    self.kwargs = kwargs
+                    self.messages = []
+                    self.closed = False
+
+                def sendText(self, message, **kwargs):
+                    self.messages.append((message, kwargs))
+
+                def close(self):
+                    self.closed = True
+
+            instances = []
+            def factory(**kwargs):
+                instance = FakeInterface(**kwargs)
+                instances.append(instance)
+                return instance
+
+            delays = []
+            sent = dispatch_pending(
+                store, "radio.local", 4403, 2,
+                interval_seconds=3,
+                sleep=delays.append,
+                interface_factory=factory,
+            )
+
+            self.assertEqual(sent, 2)
+            self.assertEqual([item[0] for item in instances[0].messages], ["primeira", "segunda"])
+            self.assertTrue(instances[0].closed)
+            self.assertEqual(delays, [3, 3])
+            self.assertEqual(len(store.list_outbox(status="sent")), 2)
+
     def test_filename_does_not_expose_untrusted_cap_identifier(self):
         name = _safe_filename("../../unexpected/path", "id/with/slashes")
         self.assertTrue(name.endswith(".txt"))

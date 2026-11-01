@@ -42,6 +42,8 @@ servico:
   tentativas_feed: 3
   tentativas_malha_ibge: 2
   limite_mensagem_caracteres: 220
+  # Pausa para permitir que o pacote enfileirado seja transmitido pelo rádio.
+  intervalo_entre_mensagens_segundos: 3
 
 fontes:
   feed_cap: "https://idapfile.mdr.gov.br/idap/api/rss/cap"

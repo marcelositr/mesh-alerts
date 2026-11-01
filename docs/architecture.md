@@ -15,7 +15,7 @@ No serviço contínuo, `service.py` usa o mesmo processamento regional, registra
 ### Saída do serviço CAP
 
 1. `state.py` mantém o estado dos alertas e a fila de saída em SQLite.
-2. `service.py` grava mensagens preparadas no diretório de saída configurado e despacha itens pendentes pelo transporte TCP do Meshtastic.
+2. `service.py` grava mensagens preparadas no diretório de saída configurado e despacha itens pendentes pelo transporte TCP do Meshtastic. Como `sendText()` apenas enfileira o pacote, o serviço mantém a interface aberta e aguarda o intervalo configurado após cada envio, inclusive o último, antes de fechar a conexão.
 3. Quando o resultado de uma tentativa de envio fica incerto, o item é registrado como incerto e não é reenviado silenciosamente. Isso reduz duplicações, mas não garante entrega exatamente uma vez.
 
 ### Previsão INMET
@@ -23,7 +23,7 @@ No serviço contínuo, `service.py` usa o mesmo processamento regional, registra
 1. `inmet_config.py` carrega e valida a configuração dos municípios e dos horários.
 2. `inmet.py` consulta a API de previsão do INMET e formata cada boletim em uma única linha: município/UF, período, resumo, temperaturas máxima/mínima, umidades máxima/mínima e intensidade do vento.
 3. `inmet_scheduler.py` controla os horários e o estado persistente dos boletins.
-4. `inmet_cli.py` oferece execução pontual ou contínua. A simulação é o padrão; a transmissão exige `--send` e um host TCP.
+4. `inmet_cli.py` oferece execução pontual ou contínua. A simulação é o padrão; a transmissão exige `--send` e um host TCP. O agendador aguarda `inmet.intervalo_entre_mensagens_segundos` após cada envio; o intervalo total entre municípios continua respeitando `inmet.intervalo_entre_municipios_segundos`.
 5. O índice do canal INMET vem de `inmet.canal` (padrão `1`), com sobrescrita por `--channel-index`. O serviço CAP usa `meshtastic.canal` (padrão `2`), com sobrescritas próprias por CLI ou variável de ambiente.
 
 Os índices separam os envios automáticos do projeto: previsões INMET no canal `1` e alertas CAP no canal `2`. Isso não bloqueia mensagens manuais de outros participantes que tenham acesso aos canais.

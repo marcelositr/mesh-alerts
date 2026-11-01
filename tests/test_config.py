@@ -16,6 +16,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(config["meshtastic"]["porta"], 4403)
         self.assertEqual(config["meshtastic"]["canal"], 2)
         self.assertEqual(config["inmet"]["canal"], 1)
+        self.assertEqual(config["servico"]["intervalo_entre_mensagens_segundos"], 3)
 
     def test_missing_file_has_actionable_error(self):
         with self.assertRaisesRegex(ConfigError, "não encontrado"):
@@ -47,6 +48,15 @@ class ConfigurationTests(unittest.TestCase):
                 "servico": {"intervalo_segundos": 1}
             }), encoding="utf-8")
             with self.assertRaisesRegex(ConfigError, ">= 10"):
+                load_config(path)
+
+    def test_negative_cap_message_interval_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.yaml"
+            path.write_text(yaml.safe_dump({
+                "servico": {"intervalo_entre_mensagens_segundos": -1}
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ConfigError, "servico.intervalo_entre_mensagens_segundos"):
                 load_config(path)
 
     def test_meshtastic_channel_outside_supported_range_is_rejected(self):

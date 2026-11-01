@@ -150,6 +150,7 @@ def process_bulletin(
         municipalities = config["municipios"]
         municipality_processed = False
         last_delivery_time = None
+        message_interval = int(inmet.get("intervalo_entre_mensagens_segundos", 3))
         for municipality in municipalities:
             code = str(municipality["codigo_ibge"])
             exists = connection.execute(
@@ -218,8 +219,14 @@ def process_bulletin(
                 (local_date, period, code, instant.isoformat()),
             )
             connection.commit()
+            delivery_time = instant
             try:
                 transport_sender(message)
+                # The Meshtastic client queues packets asynchronously. Wait before
+                # returning control so the final bulletin also has time to drain.
+                if message_interval > 0:
+                    sleep(float(message_interval))
+                    instant += timedelta(seconds=message_interval)
             except Exception as exc:
                 LOG.exception(
                     "Envio falhou/ficou incerto para %s; não haverá retry automático",
@@ -232,7 +239,7 @@ def process_bulletin(
                 )
                 connection.commit()
                 counts["failed"] += 1
-                last_delivery_time = instant
+                last_delivery_time = delivery_time
             else:
                 connection.execute(
                     "UPDATE inmet_bulletins SET status='sent', updated_at=? "
@@ -241,7 +248,7 @@ def process_bulletin(
                 )
                 connection.commit()
                 counts["sent"] += 1
-                last_delivery_time = instant
+                last_delivery_time = delivery_time
     finally:
         connection.close()
     return counts

@@ -31,6 +31,7 @@ DEFAULTS: dict[str, Any] = {
         "tentativas_feed": 3,
         "tentativas_malha_ibge": 2,
         "limite_mensagem_caracteres": 220,
+        "intervalo_entre_mensagens_segundos": 3,
     },
     "fontes": {
         "feed_cap": "https://idapfile.mdr.gov.br/idap/api/rss/cap",
@@ -140,6 +141,11 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
 
     service = config["servico"]
     service["intervalo_segundos"] = _positive_int(service.get("intervalo_segundos"), "servico.intervalo_segundos", 10)
+    service["intervalo_entre_mensagens_segundos"] = _positive_int(
+        service.get("intervalo_entre_mensagens_segundos"),
+        "servico.intervalo_entre_mensagens_segundos",
+        minimum=0,
+    )
     for key in ("timeout_http_segundos", "tentativas_feed", "tentativas_malha_ibge"):
         service[key] = _positive_int(service.get(key), f"servico.{key}")
     service["limite_mensagem_caracteres"] = _positive_int(

@@ -94,7 +94,7 @@ class InmetSchedulerTests(unittest.TestCase):
         self.assertEqual(first["sent"], 2)
         self.assertEqual(second["duplicate"], 2)
         self.assertEqual(len(calls), 2)
-        self.assertEqual(delays, [30])
+        self.assertEqual(delays, [3, 27, 3])
 
     def test_restart_waits_remaining_interval_after_previous_city_delivery(self):
         self.database.parent.mkdir(parents=True, exist_ok=True)
@@ -123,7 +123,7 @@ class InmetSchedulerTests(unittest.TestCase):
         )
         self.assertEqual(result["duplicate"], 1)
         self.assertEqual(result["sent"], 1)
-        self.assertEqual(delays, [25])
+        self.assertEqual(delays, [25, 3])
 
     def test_restart_paces_each_new_city_after_the_previous_delivery(self):
         self.config["municipios"].append(
@@ -155,7 +155,7 @@ class InmetSchedulerTests(unittest.TestCase):
         )
         self.assertEqual(result["duplicate"], 1)
         self.assertEqual(result["sent"], 2)
-        self.assertEqual(delays, [25, 30])
+        self.assertEqual(delays, [25, 3, 27, 3])
 
     def test_unavailable_forecast_does_not_skip_city_pacing(self):
         delays = []
@@ -177,7 +177,7 @@ class InmetSchedulerTests(unittest.TestCase):
         )
         self.assertEqual(result["unavailable"], 1)
         self.assertEqual(result["sent"], 1)
-        self.assertEqual(delays, [30])
+        self.assertEqual(delays, [30, 3])
 
     def test_failed_transport_is_not_retried_automatically(self):
         calls = []
